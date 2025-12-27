@@ -1,0 +1,173 @@
+{
+  "name": "ag-telemetry",
+  "displayName": "AG Telemetry",
+  "description": "Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry",
+  "version": "1.0.0",
+  "publisher": "llegomark",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/llegomark/ag-telemetry"
+  },
+  "bugs": {
+    "url": "https://github.com/llegomark/ag-telemetry/issues"
+  },
+  "homepage": "https://github.com/llegomark/ag-telemetry#readme",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "antigravity",
+    "ai",
+    "quota",
+    "telemetry",
+    "usage"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agTelemetry.refreshTelemetry",
+        "title": "Refresh Telemetry",
+        "category": "AG Telemetry",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "agTelemetry.missionBriefing",
+        "title": "Mission Briefing",
+        "category": "AG Telemetry",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "agTelemetry.viewTrends",
+        "title": "View Usage Trends",
+        "category": "AG Telemetry",
+        "icon": "$(graph-line)"
+      },
+      {
+        "command": "agTelemetry.configureAlerts",
+        "title": "Configure Alerts",
+        "category": "AG Telemetry",
+        "icon": "$(bell)"
+      },
+      {
+        "command": "agTelemetry.establishLink",
+        "title": "Establish Uplink",
+        "category": "AG Telemetry",
+        "icon": "$(radio-tower)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agTelemetryContainer",
+          "title": "AG Telemetry",
+          "icon": "$(pulse)"
+        }
+      ]
+    },
+    "views": {
+      "agTelemetryContainer": [
+        {
+          "id": "agTelemetrySystemsView",
+          "name": "System Status",
+          "contextualTitle": "AG Telemetry",
+          "icon": "$(dashboard)"
+        },
+        {
+          "id": "agTelemetryFuelView",
+          "name": "Fuel Reserves",
+          "contextualTitle": "AG Telemetry",
+          "icon": "$(beaker)"
+        },
+        {
+          "id": "agTelemetryAlertsView",
+          "name": "Active Alerts",
+          "contextualTitle": "AG Telemetry",
+          "icon": "$(bell)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "agTelemetry.refreshTelemetry",
+          "when": "view =~ /agTelemetry/",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AG Telemetry",
+      "properties": {
+        "agTelemetry.scanInterval": {
+          "type": "number",
+          "default": 90,
+          "minimum": 30,
+          "description": "Telemetry scan interval in seconds"
+        },
+        "agTelemetry.alertThresholds": {
+          "type": "object",
+          "default": {
+            "caution": 40,
+            "warning": 20,
+            "critical": 5
+          },
+          "description": "Fuel level thresholds for alerts (percentages)"
+        },
+        "agTelemetry.enableNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notification alerts for low fuel levels"
+        },
+        "agTelemetry.flightDeckMode": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "detailed",
+            "minimal"
+          ],
+          "default": "compact",
+          "description": "Status bar display mode"
+        },
+        "agTelemetry.trackHistory": {
+          "type": "boolean",
+          "default": true,
+          "description": "Track usage history for trend analysis"
+        },
+        "agTelemetry.prioritySystems": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Model IDs to prioritize in displays"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src/",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.104.0",
+    "@vscode/vsce": "^3.7.1",
+    "eslint": "^9.39.2",
+    "globals": "^16.5.0",
+    "typescript": "^5.3.0",
+    "typescript-eslint": "^8.50.1"
+  }
+}
