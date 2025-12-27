@@ -2,10 +2,6 @@
 
 **Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry.**
 
-<img width="1920" height="1080" alt="Antigravity IDE" src="https://github.com/user-attachments/assets/0277052c-a357-40aa-b071-17ca98ba5909" />
-<img width="1920" height="1080" alt="Antigravity IDE" src="https://github.com/user-attachments/assets/fa94df9b-7e6b-437e-950e-18f1fd551223" />
-<img width="1920" height="1080" alt="Antigravity IDE" src="https://github.com/user-attachments/assets/681aea20-bfce-4a50-9a96-4d8660b92177" />
-
 AG Telemetry provides real-time monitoring of your AI model quota usage in Antigravity IDE with a space mission-themed interface, including sidebar views, status bar indicators, usage trend tracking, and configurable alerts.
 
 ## Features
@@ -78,10 +74,19 @@ AG Telemetry automatically detects and monitors all AI models available in your 
 
 ## Installation
 
+### From Antigravity IDE (Recommended)
+
+1. Open Antigravity IDE
+2. Go to the Extensions view (`Ctrl+Shift+X`)
+3. Search for **"AG Telemetry"**
+4. Click **Install**
+
+The extension is available on the [Open VSX Registry](https://open-vsx.org/extension/llegomark/ag-telemetry).
+
 ### From VSIX File
 
 1. Download the latest `.vsix` file from [Releases](https://github.com/llegomark/ag-telemetry/releases)
-2. Open Antigravity
+2. Open Antigravity IDE
 3. Press `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
 4. Select the downloaded `.vsix` file
 5. Reload when prompted
