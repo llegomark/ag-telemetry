@@ -187,11 +187,12 @@ export class FlightDeck {
 
     /**
      * Create mini ASCII gauge
+     * Returns distinct characters for high/medium/low fuel levels
      */
     private miniGauge(level: number): string {
-        if (level >= 0.7) return '▰';
-        if (level >= 0.3) return '▱';
-        return '▱';
+        if (level >= 0.7) return '▰';  // High: filled block
+        if (level >= 0.3) return '▱';  // Medium: empty block
+        return '▫';                     // Low: small square (critical)
     }
 
     /**

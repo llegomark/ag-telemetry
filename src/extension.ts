@@ -121,7 +121,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 /**
  * Initialize with retry logic
  */
-async function initializeWithRetry(attempts: number = 3): Promise<void> {
+async function initializeWithRetry(attempts: number = 3, showNotification: boolean = true): Promise<void> {
     for (let i = 0; i < attempts; i++) {
         const connected = await telemetryService.establishUplink();
 
@@ -139,6 +139,21 @@ async function initializeWithRetry(attempts: number = 3): Promise<void> {
 
     flightDeck.showDisconnected();
     systemsProvider.refresh(undefined, telemetryService.getUplinkStatus());
+
+    // Show user-friendly error notification with actionable guidance
+    if (showNotification) {
+        const action = await vscode.window.showWarningMessage(
+            'AG Telemetry: Could not connect to Antigravity. Is it running?',
+            'Retry Connection',
+            'Open Settings'
+        );
+
+        if (action === 'Retry Connection') {
+            vscode.commands.executeCommand('agTelemetry.establishLink');
+        } else if (action === 'Open Settings') {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'agTelemetry');
+        }
+    }
 }
 
 /**
@@ -176,7 +191,7 @@ function handleConfigChange(): void {
     historyTracker.setEnabled(config.trackHistory);
 
     // Restart periodic scans with new interval
-    telemetryService.stopPeriodicScans();
+    // Note: startPeriodicScans() internally calls stopPeriodicScans()
     telemetryService.startPeriodicScans(config.scanInterval);
 
     // Refresh views with current data
@@ -222,13 +237,24 @@ function registerCommands(context: vscode.ExtensionContext): void {
     // Establish uplink
     context.subscriptions.push(
         vscode.commands.registerCommand('agTelemetry.establishLink', async () => {
-            vscode.window.withProgress({
+            await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: 'AG Telemetry: Establishing uplink...',
                 cancellable: false
             }, async () => {
-                await initializeWithRetry();
+                // Suppress auto-notification since we handle result manually
+                await initializeWithRetry(3, false);
             });
+
+            // Check connection status and notify user
+            const uplink = telemetryService.getUplinkStatus();
+            if (uplink.isConnected) {
+                vscode.window.showInformationMessage('AG Telemetry: Uplink established successfully');
+            } else {
+                vscode.window.showErrorMessage(
+                    'AG Telemetry: Failed to establish uplink. Ensure Antigravity is running.'
+                );
+            }
         })
     );
 }

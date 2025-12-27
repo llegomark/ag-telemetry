@@ -82,11 +82,11 @@ describe('FlightDeck Logic', () => {
     });
 
     describe('miniGauge', () => {
-        // Simulating the miniGauge logic
+        // Simulating the miniGauge logic - distinct characters for high/medium/low
         function miniGauge(level: number): string {
-            if (level >= 0.7) return '▰';
-            if (level >= 0.3) return '▱';
-            return '▱';
+            if (level >= 0.7) return '▰';  // High: filled block
+            if (level >= 0.3) return '▱';  // Medium: empty block
+            return '▫';                     // Low: small square (critical)
         }
 
         it('should return filled gauge for high levels (>=70%)', () => {
@@ -101,10 +101,21 @@ describe('FlightDeck Logic', () => {
             expect(miniGauge(0.3)).to.equal('▱');
         });
 
-        it('should return empty gauge for low levels (<30%)', () => {
-            expect(miniGauge(0.29)).to.equal('▱');
-            expect(miniGauge(0.1)).to.equal('▱');
-            expect(miniGauge(0)).to.equal('▱');
+        it('should return small square for low levels (<30%)', () => {
+            expect(miniGauge(0.29)).to.equal('▫');
+            expect(miniGauge(0.1)).to.equal('▫');
+            expect(miniGauge(0)).to.equal('▫');
+        });
+
+        it('should return distinct characters for each level range', () => {
+            // Verify all three levels return different characters
+            const high = miniGauge(0.8);
+            const medium = miniGauge(0.5);
+            const low = miniGauge(0.1);
+
+            expect(high).to.not.equal(medium);
+            expect(medium).to.not.equal(low);
+            expect(high).to.not.equal(low);
         });
     });
 
