@@ -13,6 +13,7 @@ import {
     SystemClass,
     TreeItemType
 } from './types';
+import { escapeMarkdown } from './security';
 
 /**
  * Tree item representing a telemetry data point
@@ -265,8 +266,10 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             new vscode.ThemeColor(this.getReadinessColor(system.readiness))
         );
 
+        // Escape server-derived content to prevent markdown injection
+        const safeDesignation = escapeMarkdown(system.designation);
         item.tooltip = new vscode.MarkdownString(
-            `**${system.designation}**\n\n` +
+            `**${safeDesignation}**\n\n` +
             `Fuel Level: ${percentage}%\n\n` +
             `Status: ${system.readiness}\n\n` +
             `Class: ${this.getSystemClassName(system.systemClass)}`
@@ -460,10 +463,13 @@ export class AlertsViewProvider implements vscode.TreeDataProvider<TelemetryTree
             ? `${Math.floor(elapsed / 1000)}s ago`
             : `${Math.floor(elapsed / 60000)}m ago`;
 
+        // Escape server-derived content to prevent markdown injection
+        const safeMessage = escapeMarkdown(alert.message);
+        const safeSystemDesignation = escapeMarkdown(alert.systemDesignation);
         item.tooltip = new vscode.MarkdownString(
             `**${alert.level.toUpperCase()} ALERT**\n\n` +
-            `${alert.message}\n\n` +
-            `System: ${alert.systemDesignation}\n\n` +
+            `${safeMessage}\n\n` +
+            `System: ${safeSystemDesignation}\n\n` +
             `Triggered: ${timeStr}`
         );
 

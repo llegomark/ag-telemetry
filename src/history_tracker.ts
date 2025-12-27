@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { FuelSystem, TrendDataPoint } from './types';
+import { isValidTrendDataPoint } from './security';
 
 interface StoredHistory {
     version: number;
@@ -277,6 +278,7 @@ export class HistoryTracker {
 
     /**
      * Load history from extension storage
+     * Validates data structure to prevent type confusion from corrupted storage
      */
     private loadFromStorage(): void {
         const stored = this.context.globalState.get<StoredHistory>(
@@ -284,7 +286,14 @@ export class HistoryTracker {
         );
 
         if (stored && stored.version === HistoryTracker.STORAGE_VERSION) {
-            this.dataPoints = stored.dataPoints;
+            // Validate that dataPoints is an array
+            if (!Array.isArray(stored.dataPoints)) {
+                this.dataPoints = [];
+                return;
+            }
+
+            // Validate each data point's structure to prevent type confusion attacks
+            this.dataPoints = stored.dataPoints.filter(isValidTrendDataPoint);
         }
     }
 

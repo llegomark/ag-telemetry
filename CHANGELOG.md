@@ -5,6 +5,26 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-12-27
+
+### Security
+
+- **Markdown injection prevention**: Added `escapeMarkdown()` utility to sanitize server-derived content before rendering in MarkdownString tooltips, preventing potential XSS-style attacks from malicious language server responses
+- **Removed `isTrusted` flag**: Disabled command link execution in status bar tooltips to prevent malicious content from triggering VS Code commands
+- **Storage validation**: Added schema validation for history data loaded from extension storage to prevent type confusion attacks from corrupted or malicious data
+- **PID bounds validation**: Added defense-in-depth validation for process IDs before shell command execution
+
+### Added
+
+- New `security.ts` module with reusable security utilities:
+  - `escapeMarkdown()`: Escapes markdown special characters in untrusted content
+  - `isValidPid()`: Validates process IDs within system limits (1-4194304)
+  - `isValidTrendDataPoint()`: Type guard for validating stored trend data structure
+
+### Changed
+
+- Documented security rationale for `rejectUnauthorized: false` in HTTPS requests (required for localhost self-signed certificates)
+
 ## [1.0.2] - 2025-12-27
 
 ### Fixed

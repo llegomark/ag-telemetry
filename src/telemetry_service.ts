@@ -18,6 +18,7 @@ import {
     TelemetryEventType,
     AlertThresholds
 } from './types';
+import { isValidPid } from './security';
 
 const execAsync = promisify(exec);
 
@@ -185,6 +186,11 @@ export class TelemetryService {
      * Detect active communication frequencies for process
      */
     private async detectActiveFrequencies(pid: number): Promise<number[]> {
+        // Defense in depth: validate PID even though it comes from trusted OS output
+        if (!isValidPid(pid)) {
+            return [];
+        }
+
         const os = platform();
         let output: string;
 
@@ -243,6 +249,12 @@ export class TelemetryService {
                     'Connect-Protocol-Version': '1',
                     'X-Codeium-Csrf-Token': token
                 },
+                // SECURITY NOTE: rejectUnauthorized is disabled because the Antigravity
+                // language server uses a self-signed certificate for localhost communication.
+                // This is acceptable because:
+                // 1. Communication is strictly localhost (127.0.0.1), not DNS-resolvable
+                // 2. CSRF token provides request authenticity verification
+                // 3. An attacker with local machine access has already compromised security
                 rejectUnauthorized: false,
                 timeout: 3000
             }, res => {
@@ -323,6 +335,8 @@ export class TelemetryService {
                     'Connect-Protocol-Version': '1',
                     'X-Codeium-Csrf-Token': this.uplink.securityToken!
                 },
+                // SECURITY NOTE: rejectUnauthorized is disabled for localhost self-signed cert.
+                // See probeFrequency() for detailed security rationale.
                 rejectUnauthorized: false,
                 timeout: 5000
             }, res => {

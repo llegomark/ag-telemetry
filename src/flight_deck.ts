@@ -10,6 +10,7 @@ import {
     ReadinessLevel,
     UplinkStatus
 } from './types';
+import { escapeMarkdown } from './security';
 
 type FlightDeckMode = 'compact' | 'detailed' | 'minimal';
 
@@ -294,7 +295,8 @@ export class FlightDeck {
      */
     private buildTooltip(snapshot: TelemetrySnapshot): vscode.MarkdownString {
         const md = new vscode.MarkdownString();
-        md.isTrusted = true;
+        // Note: isTrusted is intentionally not set to prevent command link execution
+        // from potentially malicious server-derived content
 
         md.appendMarkdown('## AG Telemetry - Mission Status\n\n');
 
@@ -312,7 +314,9 @@ export class FlightDeck {
             const pct = Math.round(sys.fuelLevel * 100);
             const bar = this.textGauge(sys.fuelLevel, 6);
             const status = this.getStatusEmoji(sys.readiness);
-            md.appendMarkdown(`| ${sys.designation} | ${bar} ${pct}% | ${status} |\n`);
+            // Escape server-derived designation to prevent markdown injection
+            const safeDesignation = escapeMarkdown(sys.designation);
+            md.appendMarkdown(`| ${safeDesignation} | ${bar} ${pct}% | ${status} |\n`);
         }
 
         if (sorted.length > 6) {
