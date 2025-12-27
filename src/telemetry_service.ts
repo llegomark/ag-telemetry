@@ -25,6 +25,16 @@ const execAsync = promisify(exec);
 type EventCallback = (event: TelemetryEvent) => void;
 
 /**
+ * Result of schema validation for API responses
+ */
+export interface ValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    receivedKeys: string[];
+}
+
+/**
  * Telemetry Service - Core communication module
  * Establishes and maintains uplink with Antigravity systems
  */
@@ -37,6 +47,18 @@ export class TelemetryService {
     private eventSubscribers: Set<EventCallback> = new Set();
     private scanTimer?: NodeJS.Timeout;
     private lastSnapshot?: TelemetrySnapshot;
+
+    /** Last raw API response for debugging */
+    private lastRawResponse?: unknown;
+
+    /** Last validation result for diagnostics */
+    private lastValidation?: ValidationResult;
+
+    /** Consecutive failure count for user feedback */
+    private consecutiveFailures: number = 0;
+
+    /** Threshold for showing user feedback about failures */
+    private static readonly FAILURE_THRESHOLD = 3;
 
     constructor(private thresholds: AlertThresholds) {}
 
@@ -278,16 +300,46 @@ export class TelemetryService {
     async acquireTelemetry(): Promise<TelemetrySnapshot | null> {
         if (!this.uplink.isConnected || !this.uplink.port || !this.uplink.securityToken) {
             const reconnected = await this.establishUplink();
-            if (!reconnected) return null;
+            if (!reconnected) {
+                this.trackFailure('uplink-failed');
+                return null;
+            }
         }
 
         this.emit('scan-started');
 
         try {
             const rawData = await this.transmitQuery();
+
+            // Store raw response for diagnostics
+            this.lastRawResponse = rawData;
+
             if (!rawData) {
                 this.degradeSignal();
+                this.trackFailure('no-response');
                 return null;
+            }
+
+            // Validate response schema
+            const validation = this.validateServerResponse(rawData);
+            this.lastValidation = validation;
+
+            if (!validation.valid) {
+                console.error('[AG Telemetry] Schema validation failed:', validation.errors);
+                this.emit('error', {
+                    type: 'schema-validation-failed',
+                    message: 'API response schema validation failed',
+                    errors: validation.errors,
+                    receivedKeys: validation.receivedKeys
+                });
+                this.trackFailure('schema-invalid');
+                this.degradeSignal();
+                return null;
+            }
+
+            // Log warnings if any
+            if (validation.warnings.length > 0) {
+                console.warn('[AG Telemetry] Schema validation warnings:', validation.warnings);
             }
 
             const systems = this.processTelemetryData(rawData);
@@ -305,14 +357,37 @@ export class TelemetryService {
             this.uplink.signalStrength = 100;
             this.lastSnapshot = snapshot;
 
+            // Reset failure counter on success
+            this.consecutiveFailures = 0;
+
             this.emit('telemetry-received', snapshot);
             this.emit('scan-completed');
 
             return snapshot;
         } catch (err) {
             this.degradeSignal();
+            this.trackFailure('exception');
             this.emit('error', err);
             return null;
+        }
+    }
+
+    /**
+     * Track consecutive failures and emit threshold event
+     */
+    private trackFailure(reason: string): void {
+        this.consecutiveFailures++;
+        console.warn(
+            `[AG Telemetry] Failure #${this.consecutiveFailures}: ${reason}`
+        );
+
+        if (this.consecutiveFailures === TelemetryService.FAILURE_THRESHOLD) {
+            this.emit('error', {
+                type: 'consecutive-failures',
+                message: `${this.consecutiveFailures} consecutive failures detected`,
+                reason,
+                failureCount: this.consecutiveFailures
+            });
         }
     }
 
@@ -387,6 +462,93 @@ export class TelemetryService {
         }
 
         return systems.sort((a, b) => a.fuelLevel - b.fuelLevel);
+    }
+
+    /**
+     * Validate server response schema
+     * Checks for expected data structures and logs discrepancies
+     */
+    private validateServerResponse(response: unknown): ValidationResult {
+        const result: ValidationResult = {
+            valid: true,
+            errors: [],
+            warnings: [],
+            receivedKeys: []
+        };
+
+        // Check for null/undefined response
+        if (!response || typeof response !== 'object') {
+            result.valid = false;
+            result.errors.push('Response is null, undefined, or not an object');
+            return result;
+        }
+
+        const data = response as Record<string, unknown>;
+        result.receivedKeys = Object.keys(data);
+
+        // Check for expected primary structure
+        const hasUserStatus = data.userStatus && typeof data.userStatus === 'object';
+
+        if (!hasUserStatus) {
+            result.valid = false;
+            result.errors.push(
+                `Missing 'userStatus' field. Received keys: [${result.receivedKeys.join(', ')}]`
+            );
+            return result;
+        }
+
+        // Check for cascadeModelConfigData
+        const userStatus = data.userStatus as Record<string, unknown>;
+        const hasCascade = userStatus.cascadeModelConfigData &&
+            typeof userStatus.cascadeModelConfigData === 'object';
+
+        if (!hasCascade) {
+            result.valid = false;
+            result.errors.push(
+                `Missing 'cascadeModelConfigData' in userStatus. ` +
+                `userStatus keys: [${Object.keys(userStatus).join(', ')}]`
+            );
+            return result;
+        }
+
+        // Check for clientModelConfigs array
+        const cascade = userStatus.cascadeModelConfigData as Record<string, unknown>;
+        const hasConfigs = Array.isArray(cascade.clientModelConfigs);
+
+        if (!hasConfigs) {
+            result.valid = false;
+            result.errors.push(
+                `Missing or invalid 'clientModelConfigs' array. ` +
+                `cascadeModelConfigData keys: [${Object.keys(cascade).join(', ')}]`
+            );
+            return result;
+        }
+
+        const configs = cascade.clientModelConfigs as unknown[];
+
+        // Validate individual config structure
+        if (configs.length > 0) {
+            const sample = configs[0];
+            // Guard against null/undefined array elements
+            if (sample && typeof sample === 'object') {
+                const sampleObj = sample as Record<string, unknown>;
+                if (!sampleObj.label && !sampleObj.quotaInfo) {
+                    result.warnings.push(
+                        `Config structure may have changed. ` +
+                        `Sample config keys: [${Object.keys(sampleObj).join(', ')}]`
+                    );
+                }
+            } else if (sample === null || sample === undefined) {
+                result.warnings.push('First config element is null or undefined');
+            }
+        }
+
+        // Check if configs array is empty (could be valid but worth noting)
+        if (configs.length === 0) {
+            result.warnings.push('clientModelConfigs array is empty - no models configured');
+        }
+
+        return result;
     }
 
     /**
@@ -495,6 +657,65 @@ export class TelemetryService {
      */
     updateThresholds(thresholds: AlertThresholds): void {
         this.thresholds = thresholds;
+    }
+
+    /**
+     * Get last raw API response for debugging
+     */
+    getLastRawResponse(): unknown {
+        return this.lastRawResponse;
+    }
+
+    /**
+     * Get last validation result for diagnostics
+     */
+    getLastValidation(): ValidationResult | undefined {
+        return this.lastValidation;
+    }
+
+    /**
+     * Get consecutive failure count
+     */
+    getConsecutiveFailures(): number {
+        return this.consecutiveFailures;
+    }
+
+    /**
+     * Get comprehensive diagnostic information
+     */
+    getDiagnosticInfo(): {
+        uplink: UplinkStatus;
+        consecutiveFailures: number;
+        lastValidation: ValidationResult | undefined;
+        lastRawResponseSample: string | undefined;
+        hasSnapshot: boolean;
+        systemCount: number;
+    } {
+        let rawSample: string | undefined;
+        if (this.lastRawResponse) {
+            try {
+                const full = JSON.stringify(this.lastRawResponse, null, 2);
+                rawSample = full.length > 1000 ? full.substring(0, 1000) + '...' : full;
+            } catch {
+                rawSample = '[Unable to serialize response]';
+            }
+        }
+
+        return {
+            uplink: { ...this.uplink },
+            consecutiveFailures: this.consecutiveFailures,
+            lastValidation: this.lastValidation,
+            lastRawResponseSample: rawSample,
+            hasSnapshot: !!this.lastSnapshot,
+            systemCount: this.lastSnapshot?.systems.length ?? 0
+        };
+    }
+
+    /**
+     * Reset failure counter (for manual retry)
+     */
+    resetFailureCounter(): void {
+        this.consecutiveFailures = 0;
     }
 
     /**

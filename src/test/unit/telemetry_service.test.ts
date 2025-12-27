@@ -461,4 +461,336 @@ describe('TelemetryService Logic', () => {
             expect(processTelemetryData(partialResponse)).to.deep.equal([]);
         });
     });
+
+    describe('validateServerResponse', () => {
+        interface ValidationResult {
+            valid: boolean;
+            errors: string[];
+            warnings: string[];
+            receivedKeys: string[];
+        }
+
+        // Simulating the validateServerResponse logic
+        function validateServerResponse(response: unknown): ValidationResult {
+            const result: ValidationResult = {
+                valid: true,
+                errors: [],
+                warnings: [],
+                receivedKeys: []
+            };
+
+            if (!response || typeof response !== 'object') {
+                result.valid = false;
+                result.errors.push('Response is null, undefined, or not an object');
+                return result;
+            }
+
+            const data = response as Record<string, unknown>;
+            result.receivedKeys = Object.keys(data);
+
+            const hasUserStatus = data.userStatus && typeof data.userStatus === 'object';
+
+            if (!hasUserStatus) {
+                result.valid = false;
+                result.errors.push(
+                    `Missing 'userStatus' field. Received keys: [${result.receivedKeys.join(', ')}]`
+                );
+                return result;
+            }
+
+            const userStatus = data.userStatus as Record<string, unknown>;
+            const hasCascade = userStatus.cascadeModelConfigData &&
+                typeof userStatus.cascadeModelConfigData === 'object';
+
+            if (!hasCascade) {
+                result.valid = false;
+                result.errors.push(
+                    `Missing 'cascadeModelConfigData' in userStatus. ` +
+                    `userStatus keys: [${Object.keys(userStatus).join(', ')}]`
+                );
+                return result;
+            }
+
+            const cascade = userStatus.cascadeModelConfigData as Record<string, unknown>;
+            const hasConfigs = Array.isArray(cascade.clientModelConfigs);
+
+            if (!hasConfigs) {
+                result.valid = false;
+                result.errors.push(
+                    `Missing or invalid 'clientModelConfigs' array. ` +
+                    `cascadeModelConfigData keys: [${Object.keys(cascade).join(', ')}]`
+                );
+                return result;
+            }
+
+            const configs = cascade.clientModelConfigs as unknown[];
+
+            if (configs.length > 0) {
+                const sample = configs[0];
+                // Guard against null/undefined array elements
+                if (sample && typeof sample === 'object') {
+                    const sampleObj = sample as Record<string, unknown>;
+                    if (!sampleObj.label && !sampleObj.quotaInfo) {
+                        result.warnings.push(
+                            `Config structure may have changed. ` +
+                            `Sample config keys: [${Object.keys(sampleObj).join(', ')}]`
+                        );
+                    }
+                } else if (sample === null || sample === undefined) {
+                    result.warnings.push('First config element is null or undefined');
+                }
+            }
+
+            if (configs.length === 0) {
+                result.warnings.push('clientModelConfigs array is empty - no models configured');
+            }
+
+            return result;
+        }
+
+        it('should return valid for correct API response structure', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [
+                            { label: 'gemini-pro', quotaInfo: { remainingFraction: 0.5 } }
+                        ]
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.true;
+            expect(result.errors).to.be.empty;
+        });
+
+        it('should return invalid for null response', () => {
+            const result = validateServerResponse(null);
+            expect(result.valid).to.be.false;
+            expect(result.errors).to.include('Response is null, undefined, or not an object');
+        });
+
+        it('should return invalid for undefined response', () => {
+            const result = validateServerResponse(undefined);
+            expect(result.valid).to.be.false;
+            expect(result.errors).to.include('Response is null, undefined, or not an object');
+        });
+
+        it('should return invalid for non-object response', () => {
+            const result = validateServerResponse('string');
+            expect(result.valid).to.be.false;
+            expect(result.errors[0]).to.include('not an object');
+        });
+
+        it('should return invalid for missing userStatus', () => {
+            const response = { someOtherField: {} };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.false;
+            expect(result.errors[0]).to.include("Missing 'userStatus' field");
+            expect(result.receivedKeys).to.include('someOtherField');
+        });
+
+        it('should return invalid for missing cascadeModelConfigData', () => {
+            const response = {
+                userStatus: {
+                    someOtherField: {}
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.false;
+            expect(result.errors[0]).to.include("Missing 'cascadeModelConfigData'");
+        });
+
+        it('should return invalid for missing clientModelConfigs array', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        someOtherField: []
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.false;
+            expect(result.errors[0]).to.include("Missing or invalid 'clientModelConfigs' array");
+        });
+
+        it('should return invalid for non-array clientModelConfigs', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: 'not an array'
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.false;
+            expect(result.errors[0]).to.include("Missing or invalid 'clientModelConfigs' array");
+        });
+
+        it('should add warning for empty clientModelConfigs array', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: []
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.true;
+            expect(result.warnings).to.include('clientModelConfigs array is empty - no models configured');
+        });
+
+        it('should add warning for unexpected config structure', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [
+                            { unexpectedField: 'value' }
+                        ]
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.true;
+            expect(result.warnings[0]).to.include('Config structure may have changed');
+        });
+
+        it('should track received keys for debugging', () => {
+            const response = { fieldA: 1, fieldB: 2, fieldC: 3 };
+            const result = validateServerResponse(response);
+            expect(result.receivedKeys).to.deep.equal(['fieldA', 'fieldB', 'fieldC']);
+        });
+
+        it('should handle deeply nested valid structure', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [
+                            {
+                                label: 'model-1',
+                                modelOrAlias: { model: 'model-id' },
+                                quotaInfo: {
+                                    remainingFraction: 0.75,
+                                    resetTime: '2025-01-01T00:00:00Z'
+                                }
+                            },
+                            {
+                                label: 'model-2',
+                                quotaInfo: { remainingFraction: 0.25 }
+                            }
+                        ]
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.true;
+            expect(result.errors).to.be.empty;
+            expect(result.warnings).to.be.empty;
+        });
+
+        it('should add warning for null config element', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [null]
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.true;
+            expect(result.warnings).to.include('First config element is null or undefined');
+        });
+
+        it('should add warning for undefined config element', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [undefined]
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.true;
+            expect(result.warnings).to.include('First config element is null or undefined');
+        });
+
+        it('should handle primitive config element gracefully', () => {
+            const response = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: ['string-instead-of-object']
+                    }
+                }
+            };
+            const result = validateServerResponse(response);
+            expect(result.valid).to.be.true;
+            // Primitives that are not null/undefined are silently ignored (no warning)
+            // This is valid as they would just be skipped during processing
+        });
+    });
+
+    describe('trackFailure', () => {
+        // Simulating the failure tracking logic
+        const FAILURE_THRESHOLD = 3;
+
+        function createFailureTracker() {
+            let consecutiveFailures = 0;
+            const events: { type: string; failureCount: number }[] = [];
+
+            return {
+                trackFailure() {
+                    consecutiveFailures++;
+                    if (consecutiveFailures === FAILURE_THRESHOLD) {
+                        events.push({
+                            type: 'consecutive-failures',
+                            failureCount: consecutiveFailures
+                        });
+                    }
+                },
+                reset() {
+                    consecutiveFailures = 0;
+                },
+                getFailureCount() {
+                    return consecutiveFailures;
+                },
+                getEvents() {
+                    return events;
+                }
+            };
+        }
+
+        it('should increment failure count on each failure', () => {
+            const tracker = createFailureTracker();
+            tracker.trackFailure();
+            expect(tracker.getFailureCount()).to.equal(1);
+            tracker.trackFailure();
+            expect(tracker.getFailureCount()).to.equal(2);
+        });
+
+        it('should emit event at failure threshold', () => {
+            const tracker = createFailureTracker();
+            tracker.trackFailure();
+            tracker.trackFailure();
+            expect(tracker.getEvents()).to.be.empty;
+            tracker.trackFailure();
+            expect(tracker.getEvents()).to.have.lengthOf(1);
+            expect(tracker.getEvents()[0].type).to.equal('consecutive-failures');
+            expect(tracker.getEvents()[0].failureCount).to.equal(3);
+        });
+
+        it('should only emit once at threshold', () => {
+            const tracker = createFailureTracker();
+            for (let i = 0; i < 5; i++) {
+                tracker.trackFailure();
+            }
+            expect(tracker.getEvents()).to.have.lengthOf(1);
+        });
+
+        it('should reset failure count', () => {
+            const tracker = createFailureTracker();
+            tracker.trackFailure();
+            tracker.trackFailure();
+            tracker.reset();
+            expect(tracker.getFailureCount()).to.equal(0);
+        });
+    });
 });

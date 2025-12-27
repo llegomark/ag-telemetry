@@ -22,10 +22,14 @@ export class HistoryTracker {
     private static readonly MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
     private static readonly MAX_POINTS_PER_SYSTEM = 500;
     private static readonly SAMPLE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    private static readonly STORAGE_WARNING_BYTES = 500 * 1024; // Warn at 500KB
+    private static readonly MAX_STORAGE_FAILURES = 3;
 
     private dataPoints: TrendDataPoint[] = [];
     private lastSampleTime: Map<string, number> = new Map();
     private enabled: boolean;
+    private storageFailureCount: number = 0;
+    private storageWarningShown: boolean = false;
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -299,15 +303,85 @@ export class HistoryTracker {
 
     /**
      * Save history to extension storage
+     * Handles quota errors gracefully and disables tracking after repeated failures
      */
     private saveToStorage(): void {
+        // Skip if storage has failed too many times
+        if (this.storageFailureCount >= HistoryTracker.MAX_STORAGE_FAILURES) {
+            return;
+        }
+
         const data: StoredHistory = {
             version: HistoryTracker.STORAGE_VERSION,
             dataPoints: this.dataPoints,
             lastPruned: Date.now()
         };
 
-        this.context.globalState.update(HistoryTracker.STORAGE_KEY, data);
+        // Estimate storage size and warn if approaching limits
+        this.checkStorageSize(data);
+
+        this.context.globalState.update(HistoryTracker.STORAGE_KEY, data).then(
+            () => {
+                // Reset failure count on success
+                this.storageFailureCount = 0;
+            },
+            (error) => {
+                this.handleStorageError(error);
+            }
+        );
+    }
+
+    /**
+     * Estimate storage size and show warning if large
+     */
+    private checkStorageSize(data: StoredHistory): void {
+        if (this.storageWarningShown) {
+            return;
+        }
+
+        try {
+            const estimatedSize = JSON.stringify(data).length * 2; // UTF-16 estimate
+            if (estimatedSize > HistoryTracker.STORAGE_WARNING_BYTES) {
+                this.storageWarningShown = true;
+                vscode.window.showWarningMessage(
+                    'AG Telemetry: History storage is large. Consider reducing tracked systems or clearing history.',
+                    'Clear History'
+                ).then(action => {
+                    if (action === 'Clear History') {
+                        this.clearHistory();
+                    }
+                });
+            }
+        } catch {
+            // Ignore size check errors
+        }
+    }
+
+    /**
+     * Handle storage errors with graceful degradation
+     */
+    private handleStorageError(error: unknown): void {
+        this.storageFailureCount++;
+        console.error('AG Telemetry: Storage error:', error);
+
+        if (this.storageFailureCount >= HistoryTracker.MAX_STORAGE_FAILURES) {
+            // Disable tracking after repeated failures
+            this.enabled = false;
+            vscode.window.showErrorMessage(
+                'AG Telemetry: History tracking disabled due to storage errors. ' +
+                'Try clearing history to free space.',
+                'Clear History',
+                'Open Settings'
+            ).then(action => {
+                if (action === 'Clear History') {
+                    this.clearHistory();
+                    this.enabled = true;
+                    this.storageFailureCount = 0;
+                } else if (action === 'Open Settings') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'agTelemetry.trackHistory');
+                }
+            });
+        }
     }
 
     /**

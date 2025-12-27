@@ -2,7 +2,7 @@
   "name": "ag-telemetry",
   "displayName": "AG Telemetry",
   "description": "Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "publisher": "llegomark",
   "license": "MIT",
   "repository": {
@@ -63,6 +63,12 @@
         "title": "Establish Uplink",
         "category": "AG Telemetry",
         "icon": "$(radio-tower)"
+      },
+      {
+        "command": "agTelemetry.runDiagnostics",
+        "title": "Run Diagnostics",
+        "category": "AG Telemetry",
+        "icon": "$(debug-console)"
       }
     ],
     "viewsContainers": {

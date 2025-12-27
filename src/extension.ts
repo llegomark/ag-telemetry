@@ -109,9 +109,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             case 'scan-started':
                 flightDeck.showScanning();
                 break;
-            case 'error':
+            case 'error': {
                 console.error('AG Telemetry error:', event.payload);
+                // Handle consecutive failures with user feedback
+                const errorPayload = event.payload as { type?: string; failureCount?: number } | undefined;
+                if (errorPayload?.type === 'consecutive-failures' && errorPayload.failureCount) {
+                    handleConsecutiveFailures(errorPayload.failureCount);
+                }
                 break;
+            }
         }
     });
 
@@ -279,6 +285,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
                     'AG Telemetry: Failed to establish uplink. Ensure Antigravity is running.'
                 );
             }
+        })
+    );
+
+    // Run diagnostics
+    context.subscriptions.push(
+        vscode.commands.registerCommand('agTelemetry.runDiagnostics', async () => {
+            await runDiagnostics();
         })
     );
 }
@@ -478,6 +491,230 @@ function getSystemIcon(system: FuelSystem): string {
  */
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Run comprehensive diagnostics and display results
+ */
+async function runDiagnostics(): Promise<void> {
+    const output = vscode.window.createOutputChannel('AG Telemetry Diagnostics');
+    output.clear();
+    output.show();
+
+    output.appendLine('═══════════════════════════════════════════════════════');
+    output.appendLine('         AG TELEMETRY - DIAGNOSTIC REPORT');
+    output.appendLine('═══════════════════════════════════════════════════════');
+    output.appendLine(`Timestamp: ${new Date().toISOString()}`);
+    output.appendLine(`Extension Version: ${getExtensionVersion()}`);
+    output.appendLine('');
+
+    const diagnostic = telemetryService.getDiagnosticInfo();
+
+    // Section 1: Uplink Status
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('1. UPLINK STATUS');
+    output.appendLine('───────────────────────────────────────────────────────');
+
+    if (diagnostic.uplink.isConnected) {
+        output.appendLine('   ✓ Status: CONNECTED');
+        output.appendLine(`   ✓ Port: ${diagnostic.uplink.port}`);
+        output.appendLine(`   ✓ Signal Strength: ${diagnostic.uplink.signalStrength}%`);
+        if (diagnostic.uplink.lastContact) {
+            const elapsed = Math.round((Date.now() - diagnostic.uplink.lastContact) / 1000);
+            output.appendLine(`   ✓ Last Contact: ${elapsed}s ago`);
+        }
+        output.appendLine(`   ✓ CSRF Token: ${diagnostic.uplink.securityToken ? 'Present (' + diagnostic.uplink.securityToken.substring(0, 8) + '...)' : 'Missing'}`);
+    } else {
+        output.appendLine('   ✗ Status: DISCONNECTED');
+        output.appendLine('   ✗ No active uplink connection');
+    }
+    output.appendLine('');
+
+    // Section 2: Failure Tracking
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('2. FAILURE TRACKING');
+    output.appendLine('───────────────────────────────────────────────────────');
+
+    if (diagnostic.consecutiveFailures === 0) {
+        output.appendLine('   ✓ Consecutive Failures: 0');
+        output.appendLine('   ✓ System operating normally');
+    } else {
+        output.appendLine(`   ⚠ Consecutive Failures: ${diagnostic.consecutiveFailures}`);
+        if (diagnostic.consecutiveFailures >= 3) {
+            output.appendLine('   ✗ Threshold exceeded - API may have changed');
+        }
+    }
+    output.appendLine('');
+
+    // Section 3: Schema Validation
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('3. SCHEMA VALIDATION');
+    output.appendLine('───────────────────────────────────────────────────────');
+
+    if (diagnostic.lastValidation) {
+        if (diagnostic.lastValidation.valid) {
+            output.appendLine('   ✓ Last Validation: PASSED');
+            output.appendLine(`   ✓ Response Keys: [${diagnostic.lastValidation.receivedKeys.join(', ')}]`);
+        } else {
+            output.appendLine('   ✗ Last Validation: FAILED');
+            output.appendLine('   Errors:');
+            for (const error of diagnostic.lastValidation.errors) {
+                output.appendLine(`     - ${error}`);
+            }
+        }
+        if (diagnostic.lastValidation.warnings.length > 0) {
+            output.appendLine('   Warnings:');
+            for (const warning of diagnostic.lastValidation.warnings) {
+                output.appendLine(`     - ${warning}`);
+            }
+        }
+    } else {
+        output.appendLine('   ? No validation data available yet');
+    }
+    output.appendLine('');
+
+    // Section 4: Telemetry Data
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('4. TELEMETRY DATA');
+    output.appendLine('───────────────────────────────────────────────────────');
+
+    if (diagnostic.hasSnapshot) {
+        output.appendLine(`   ✓ Data Available: YES`);
+        output.appendLine(`   ✓ Systems Detected: ${diagnostic.systemCount}`);
+
+        const snapshot = telemetryService.getLastSnapshot();
+        if (snapshot && snapshot.systems.length > 0) {
+            output.appendLine('   Systems:');
+            for (const sys of snapshot.systems) {
+                const pct = Math.round(sys.fuelLevel * 100);
+                output.appendLine(`     - ${sys.designation}: ${pct}% (${sys.readiness})`);
+            }
+        }
+    } else {
+        output.appendLine('   ✗ Data Available: NO');
+        output.appendLine('   ✗ No telemetry snapshot captured yet');
+    }
+    output.appendLine('');
+
+    // Section 5: Raw Response Sample
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('5. RAW API RESPONSE (SAMPLE)');
+    output.appendLine('───────────────────────────────────────────────────────');
+
+    if (diagnostic.lastRawResponseSample) {
+        output.appendLine(diagnostic.lastRawResponseSample);
+    } else {
+        output.appendLine('   No API response captured yet');
+    }
+    output.appendLine('');
+
+    // Section 6: Expected API Structure
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('6. EXPECTED API STRUCTURE');
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('   {');
+    output.appendLine('     "userStatus": {');
+    output.appendLine('       "cascadeModelConfigData": {');
+    output.appendLine('         "clientModelConfigs": [');
+    output.appendLine('           {');
+    output.appendLine('             "label": "model-name",');
+    output.appendLine('             "modelOrAlias": { "model": "model-id" },');
+    output.appendLine('             "quotaInfo": {');
+    output.appendLine('               "remainingFraction": 0.75,');
+    output.appendLine('               "resetTime": "ISO-8601-timestamp"');
+    output.appendLine('             }');
+    output.appendLine('           }');
+    output.appendLine('         ]');
+    output.appendLine('       }');
+    output.appendLine('     }');
+    output.appendLine('   }');
+    output.appendLine('');
+
+    // Summary
+    output.appendLine('═══════════════════════════════════════════════════════');
+    output.appendLine('                     SUMMARY');
+    output.appendLine('═══════════════════════════════════════════════════════');
+
+    const issues: string[] = [];
+    if (!diagnostic.uplink.isConnected) {
+        issues.push('Uplink disconnected');
+    }
+    if (diagnostic.consecutiveFailures > 0) {
+        issues.push(`${diagnostic.consecutiveFailures} consecutive failure(s)`);
+    }
+    if (diagnostic.lastValidation && !diagnostic.lastValidation.valid) {
+        issues.push('Schema validation failed');
+    }
+    if (!diagnostic.hasSnapshot) {
+        issues.push('No telemetry data');
+    }
+
+    if (issues.length === 0) {
+        output.appendLine('   ✓ All systems nominal');
+    } else {
+        output.appendLine('   Issues detected:');
+        for (const issue of issues) {
+            output.appendLine(`     ✗ ${issue}`);
+        }
+    }
+    output.appendLine('');
+    output.appendLine('───────────────────────────────────────────────────────');
+    output.appendLine('To report issues: https://github.com/llegomark/ag-telemetry/issues');
+    output.appendLine('───────────────────────────────────────────────────────');
+
+    // Offer actions
+    const action = await vscode.window.showInformationMessage(
+        'AG Telemetry: Diagnostics complete. View the output panel for details.',
+        'Retry Connection',
+        'Report Issue',
+        'Close'
+    );
+
+    if (action === 'Retry Connection') {
+        telemetryService.resetFailureCounter();
+        vscode.commands.executeCommand('agTelemetry.establishLink');
+    } else if (action === 'Report Issue') {
+        const issueUrl = 'https://github.com/llegomark/ag-telemetry/issues/new?' +
+            'template=bug_report.md&title=' +
+            encodeURIComponent('[Diagnostic] API Compatibility Issue');
+        vscode.env.openExternal(vscode.Uri.parse(issueUrl));
+    }
+}
+
+/**
+ * Get extension version from package.json
+ */
+function getExtensionVersion(): string {
+    try {
+        const ext = vscode.extensions.getExtension('llegomark.ag-telemetry');
+        return ext?.packageJSON?.version ?? 'unknown';
+    } catch {
+        return 'unknown';
+    }
+}
+
+/**
+ * Handle consecutive failure events with user feedback
+ */
+function handleConsecutiveFailures(failureCount: number): void {
+    vscode.window.showErrorMessage(
+        `AG Telemetry: ${failureCount} consecutive failures. The Antigravity API may have changed.`,
+        'Run Diagnostics',
+        'Report Issue',
+        'Retry'
+    ).then(action => {
+        if (action === 'Run Diagnostics') {
+            vscode.commands.executeCommand('agTelemetry.runDiagnostics');
+        } else if (action === 'Report Issue') {
+            const issueUrl = 'https://github.com/llegomark/ag-telemetry/issues/new?' +
+                'template=bug_report.md&title=' +
+                encodeURIComponent('[API Change] Consecutive Failures Detected');
+            vscode.env.openExternal(vscode.Uri.parse(issueUrl));
+        } else if (action === 'Retry') {
+            telemetryService.resetFailureCounter();
+            vscode.commands.executeCommand('agTelemetry.establishLink');
+        }
+    });
 }
 
 /**

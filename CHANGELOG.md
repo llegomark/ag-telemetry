@@ -5,6 +5,41 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2025-12-27
+
+### Added
+
+- **Run Diagnostics command** (`agTelemetry.runDiagnostics`): Comprehensive diagnostic tool for troubleshooting connection and API issues
+  - Displays uplink status (port, signal strength, CSRF token presence)
+  - Shows consecutive failure count and schema validation results
+  - Lists detected systems with fuel levels
+  - Includes raw API response sample for debugging
+  - Shows expected API structure for comparison
+  - Provides actionable buttons: "Retry Connection", "Report Issue"
+- **Schema validation**: New `validateServerResponse()` function validates API response structure before processing
+  - Checks for required fields: `userStatus`, `cascadeModelConfigData`, `clientModelConfigs`
+  - Logs detailed error messages with received keys for debugging API changes
+  - Adds warnings for empty configs or unexpected structure
+- **Consecutive failure tracking**: Monitors failed API requests and alerts users after 3 consecutive failures
+  - Helps detect when Antigravity IDE updates break API compatibility
+  - Shows error notification with "Run Diagnostics", "Report Issue", and "Retry" options
+- **Diagnostic information storage**: Stores last raw response, validation results, and failure count for debugging
+  - `getLastRawResponse()`: Access raw API response
+  - `getLastValidation()`: Access validation results
+  - `getConsecutiveFailures()`: Access failure count
+  - `getDiagnosticInfo()`: Get comprehensive diagnostic data
+  - `resetFailureCounter()`: Reset failure count for manual retry
+
+### Fixed
+
+- **Null array element crash**: Fixed potential TypeError when API returns null elements in `clientModelConfigs` array
+  - Added guard against null/undefined array elements in schema validation
+
+### Changed
+
+- `acquireTelemetry()` now validates response schema before processing and tracks consecutive failures
+- Error events now include structured payload with error type for better handling
+
 ## [1.0.4] - 2025-12-27
 
 ### Security
