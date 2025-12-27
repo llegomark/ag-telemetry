@@ -5,6 +5,16 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2025-12-27
+
+### Added
+
+- **Open VSX Registry**: Extension now available on [Open VSX Registry](https://open-vsx.org/extension/llegomark/ag-telemetry) for easy installation in Antigravity IDE
+
+### Changed
+
+- Updated README with new installation instructions for Antigravity IDE via Extensions view
+
 ## [1.0.5] - 2025-12-27
 
 ### Added
