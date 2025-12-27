@@ -76,7 +76,7 @@
         {
           "id": "agTelemetryContainer",
           "title": "AG Telemetry",
-          "icon": "$(pulse)"
+          "icon": "media/sidebar-icon.svg"
         }
       ]
     },
