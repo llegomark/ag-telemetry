@@ -10,7 +10,7 @@ import {
     ReadinessLevel,
     UplinkStatus
 } from './types';
-import { escapeMarkdown } from './security';
+import { escapeMarkdown, sanitizeLabel } from './security';
 
 type FlightDeckMode = 'compact' | 'detailed' | 'minimal';
 
@@ -126,7 +126,9 @@ export class FlightDeck {
         let text: string;
         if (critical && critical.fuelLevel < 0.3) {
             const pct = Math.round(critical.fuelLevel * 100);
-            const abbr = this.abbreviateSystem(critical.designation);
+            // Sanitize designation before abbreviating for status bar display
+            const safeDesignation = sanitizeLabel(critical.designation, 32);
+            const abbr = this.abbreviateSystem(safeDesignation);
             text = `${icon} AGT ${abbr}:${pct}%`;
         } else {
             text = `${icon} AGT ${Math.round(avgFuel * 100)}%`;
@@ -152,7 +154,9 @@ export class FlightDeck {
         // Secondary: priority systems or top 3 lowest
         const displaySystems = this.getDisplaySystems(snapshot.systems);
         const parts = displaySystems.map(sys => {
-            const abbr = this.abbreviateSystem(sys.designation);
+            // Sanitize designation before abbreviating for status bar display
+            const safeDesignation = sanitizeLabel(sys.designation, 32);
+            const abbr = this.abbreviateSystem(safeDesignation);
             const pct = Math.round(sys.fuelLevel * 100);
             const gauge = this.miniGauge(sys.fuelLevel);
             return `${abbr}${gauge}${pct}`;

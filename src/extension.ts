@@ -15,7 +15,7 @@ import {
     TelemetrySnapshot,
     FuelSystem
 } from './types';
-import { isValidAlertThresholds } from './security';
+import { isValidAlertThresholds, sanitizeLabel } from './security';
 
 let telemetryService: TelemetryService;
 let alertManager: AlertManager;
@@ -86,12 +86,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     fuelProvider = new FuelViewProvider();
     alertsProvider = new AlertsViewProvider();
 
-    // Register tree views
-    context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('agTelemetrySystemsView', systemsProvider),
-        vscode.window.registerTreeDataProvider('agTelemetryFuelView', fuelProvider),
-        vscode.window.registerTreeDataProvider('agTelemetryAlertsView', alertsProvider)
-    );
+    // Register tree views using createTreeView for better control over visibility
+    // This approach is more reliable than registerTreeDataProvider for keeping views visible
+    const systemsView = vscode.window.createTreeView('agTelemetrySystemsView', {
+        treeDataProvider: systemsProvider,
+        showCollapseAll: false
+    });
+    const fuelView = vscode.window.createTreeView('agTelemetryFuelView', {
+        treeDataProvider: fuelProvider,
+        showCollapseAll: true
+    });
+    const alertsView = vscode.window.createTreeView('agTelemetryAlertsView', {
+        treeDataProvider: alertsProvider,
+        showCollapseAll: false
+    });
+
+    context.subscriptions.push(systemsView, fuelView, alertsView);
+
+    // IMPORTANT: Immediately refresh all views to ensure the view container stays visible
+    // Without this, VS Code may hide the container if views appear uninitialized
+    systemsProvider.refresh(undefined, { isConnected: false, signalStrength: 0 });
+    fuelProvider.refresh([], []);
+    alertsProvider.refresh([]);
+
+    // Force the view container to be visible by focusing it briefly
+    // This works around an issue where the container icon disappears on IDE restart
+    setTimeout(() => {
+        vscode.commands.executeCommand('agTelemetrySystemsView.focus').then(
+            () => {},
+            () => {} // Ignore errors if view is already focused or command fails
+        );
+    }, 100);
 
     // Subscribe to telemetry events
     const unsubscribe = telemetryService.subscribe(event => {
@@ -330,9 +355,11 @@ async function showMissionBriefing(): Promise<void> {
         const pct = Math.round(sys.fuelLevel * 100);
         const gauge = renderQuickGauge(sys.fuelLevel);
         const trend = historyTracker.generateTrendSummary(sys.systemId);
+        // Sanitize server-derived designation for QuickPick labels
+        const safeDesignation = sanitizeLabel(sys.designation);
 
         items.push({
-            label: `${getSystemIcon(sys)} ${sys.designation}`,
+            label: `${getSystemIcon(sys)} ${safeDesignation}`,
             description: `${gauge} ${pct}%`,
             detail: trend !== '?' ? `Trend: ${trend}` : undefined
         });
@@ -523,7 +550,8 @@ async function runDiagnostics(): Promise<void> {
             const elapsed = Math.round((Date.now() - diagnostic.uplink.lastContact) / 1000);
             output.appendLine(`   ✓ Last Contact: ${elapsed}s ago`);
         }
-        output.appendLine(`   ✓ CSRF Token: ${diagnostic.uplink.securityToken ? 'Present (' + diagnostic.uplink.securityToken.substring(0, 8) + '...)' : 'Missing'}`);
+        // Security: Never log token material, even partially redacted
+        output.appendLine(`   ✓ CSRF Token: ${diagnostic.uplink.securityToken ? 'Present' : 'Missing'}`);
     } else {
         output.appendLine('   ✗ Status: DISCONNECTED');
         output.appendLine('   ✗ No active uplink connection');
@@ -587,7 +615,9 @@ async function runDiagnostics(): Promise<void> {
             output.appendLine('   Systems:');
             for (const sys of snapshot.systems) {
                 const pct = Math.round(sys.fuelLevel * 100);
-                output.appendLine(`     - ${sys.designation}: ${pct}% (${sys.readiness})`);
+                // Sanitize designation to prevent control chars in diagnostic output
+                const safeDesignation = sanitizeLabel(sys.designation, 128);
+                output.appendLine(`     - ${safeDesignation}: ${pct}% (${sys.readiness})`);
             }
         }
     } else {
@@ -596,13 +626,15 @@ async function runDiagnostics(): Promise<void> {
     }
     output.appendLine('');
 
-    // Section 5: Raw Response Sample
+    // Section 5: Response Structure (sanitized - no raw data)
     output.appendLine('───────────────────────────────────────────────────────');
-    output.appendLine('5. RAW API RESPONSE (SAMPLE)');
+    output.appendLine('5. API RESPONSE STRUCTURE');
     output.appendLine('───────────────────────────────────────────────────────');
-
-    if (diagnostic.lastRawResponseSample) {
-        output.appendLine(diagnostic.lastRawResponseSample);
+    // Security: Do not log raw response data which may contain sensitive info
+    // Instead, show only the structural validation result
+    if (diagnostic.lastValidation) {
+        output.appendLine(`   Structure Valid: ${diagnostic.lastValidation.valid ? 'YES' : 'NO'}`);
+        output.appendLine(`   Top-level Keys: [${diagnostic.lastValidation.receivedKeys.join(', ')}]`);
     } else {
         output.appendLine('   No API response captured yet');
     }

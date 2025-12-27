@@ -9,7 +9,8 @@ import {
     isValidPid,
     isValidTrendDataPoint,
     isValidAlertThresholds,
-    sanitizeNotificationContent
+    sanitizeNotificationContent,
+    sanitizeLabel
 } from '../../security';
 
 describe('Security Utilities', () => {
@@ -538,6 +539,142 @@ describe('Security Utilities', () => {
             expect(result.endsWith('...')).to.be.true;
             expect(result).to.not.include('\u200B');
             expect(result).to.not.include('\x00');
+        });
+    });
+
+    describe('sanitizeLabel', () => {
+        it('should return empty string for null/undefined/empty input', () => {
+            expect(sanitizeLabel('')).to.equal('');
+            expect(sanitizeLabel(null as unknown as string)).to.equal('');
+            expect(sanitizeLabel(undefined as unknown as string)).to.equal('');
+        });
+
+        it('should preserve normal text', () => {
+            expect(sanitizeLabel('Gemini Pro')).to.equal('Gemini Pro');
+            expect(sanitizeLabel('Claude 3.5 Sonnet')).to.equal('Claude 3.5 Sonnet');
+            expect(sanitizeLabel('GPT-4o')).to.equal('GPT-4o');
+        });
+
+        it('should remove control characters', () => {
+            // Null byte
+            expect(sanitizeLabel('Test\x00String')).to.equal('TestString');
+            // Tab
+            expect(sanitizeLabel('Test\tString')).to.equal('TestString');
+            // Newline
+            expect(sanitizeLabel('Test\nString')).to.equal('TestString');
+            // Carriage return
+            expect(sanitizeLabel('Test\rString')).to.equal('TestString');
+            // Bell
+            expect(sanitizeLabel('Test\x07String')).to.equal('TestString');
+        });
+
+        it('should remove zero-width characters', () => {
+            // Zero-width space
+            expect(sanitizeLabel('Test\u200BString')).to.equal('TestString');
+            // Zero-width non-joiner
+            expect(sanitizeLabel('Test\u200CString')).to.equal('TestString');
+            // Zero-width joiner
+            expect(sanitizeLabel('Test\u200DString')).to.equal('TestString');
+            // Byte order mark
+            expect(sanitizeLabel('\uFEFFTest')).to.equal('Test');
+        });
+
+        it('should remove VS Code codicon sequences', () => {
+            // Simple codicon
+            expect(sanitizeLabel('$(error) Error')).to.equal('Error');
+            // Codicon with modifier
+            expect(sanitizeLabel('$(sync~spin) Loading')).to.equal('Loading');
+            // Multiple codicons
+            expect(sanitizeLabel('$(pass) OK $(warning) Warn')).to.equal('OK Warn');
+            // Codicon at end
+            expect(sanitizeLabel('Status $(check)')).to.equal('Status');
+            // Only codicon
+            expect(sanitizeLabel('$(icon)')).to.equal('');
+        });
+
+        it('should prevent codicon injection attacks', () => {
+            // Attacker tries to inject error icon to spoof alerts
+            const attack1 = 'Gemini Pro$(error)';
+            expect(sanitizeLabel(attack1)).to.equal('Gemini Pro');
+
+            // Attacker tries to inject warning icon
+            const attack2 = '$(warning)Critical System';
+            expect(sanitizeLabel(attack2)).to.equal('Critical System');
+
+            // Nested/malformed codicons
+            expect(sanitizeLabel('Test$($()nested)')).to.equal('Testnested)');
+        });
+
+        it('should normalize excessive whitespace', () => {
+            expect(sanitizeLabel('Test   String')).to.equal('Test String');
+            expect(sanitizeLabel('  Leading')).to.equal('Leading');
+            expect(sanitizeLabel('Trailing  ')).to.equal('Trailing');
+            expect(sanitizeLabel('  Both  ')).to.equal('Both');
+        });
+
+        it('should truncate strings exceeding max length', () => {
+            const longString = 'A'.repeat(100);
+            const result = sanitizeLabel(longString); // default maxLength is 64
+            expect(result.length).to.equal(64);
+            expect(result.endsWith('...')).to.be.true;
+        });
+
+        it('should respect custom max length', () => {
+            const input = 'This is a test string for truncation testing';
+            const result = sanitizeLabel(input, 20);
+            expect(result.length).to.equal(20);
+            expect(result).to.equal('This is a test st...');
+        });
+
+        it('should not truncate strings at or below max length', () => {
+            const input = 'Short text';
+            expect(sanitizeLabel(input, 100)).to.equal('Short text');
+            expect(sanitizeLabel(input, 64)).to.equal('Short text');
+        });
+
+        it('should handle very small maxLength values gracefully', () => {
+            const input = 'This is a long string';
+            // Minimum effective maxLength is 4
+            expect(sanitizeLabel(input, 1)).to.equal('T...');
+            expect(sanitizeLabel(input, 2)).to.equal('T...');
+            expect(sanitizeLabel(input, 3)).to.equal('T...');
+            expect(sanitizeLabel(input, 4)).to.equal('T...');
+            expect(sanitizeLabel(input, 5)).to.equal('Th...');
+        });
+
+        it('should handle unicode and emoji safely', () => {
+            expect(sanitizeLabel('System 🚀')).to.equal('System 🚀');
+            expect(sanitizeLabel('日本語テスト')).to.equal('日本語テスト');
+            expect(sanitizeLabel('Ñoño Español')).to.equal('Ñoño Español');
+        });
+
+        it('should handle combined attacks', () => {
+            // Codicons + control chars + zero-width chars
+            // Note: \n is a control char and gets removed, leaving no space between Test and String
+            const attack = '$(error)\u200B' + 'Test\x00\n$(warning)String' + '\u200E';
+            const result = sanitizeLabel(attack);
+            expect(result).to.equal('TestString');
+            expect(result).to.not.include('$(');
+            expect(result).to.not.include('\u200B');
+            expect(result).to.not.include('\x00');
+
+            // Test with explicit space preserved
+            const attackWithSpace = '$(error) Test $(warning) String';
+            expect(sanitizeLabel(attackWithSpace)).to.equal('Test String');
+        });
+
+        it('should handle malformed telemetry payloads', () => {
+            // Missing label (would return empty after validation)
+            expect(sanitizeLabel('')).to.equal('');
+
+            // NaN-like string labels (should pass through)
+            expect(sanitizeLabel('NaN')).to.equal('NaN');
+
+            // Very long malicious label
+            const longAttack = '$(error)'.repeat(100) + 'A'.repeat(1000);
+            const result = sanitizeLabel(longAttack, 64);
+            expect(result.length).to.equal(64);
+            expect(result).to.not.include('$(');
         });
     });
 });

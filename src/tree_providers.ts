@@ -13,7 +13,7 @@ import {
     SystemClass,
     TreeItemType
 } from './types';
-import { escapeMarkdown } from './security';
+import { escapeMarkdown, sanitizeLabel } from './security';
 
 /**
  * Tree item representing a telemetry data point
@@ -249,9 +249,11 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
         const gauge = this.renderFuelGauge(system.fuelLevel);
         const isPriority = this.prioritySystems.includes(system.systemId);
 
+        // Sanitize server-derived designation to prevent control char/codicon injection
+        const safeDesignation = sanitizeLabel(system.designation);
         const label = isPriority
-            ? `★ ${system.designation}`
-            : system.designation;
+            ? `★ ${safeDesignation}`
+            : safeDesignation;
 
         const item = new TelemetryTreeItem(
             label,
@@ -266,10 +268,10 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             new vscode.ThemeColor(this.getReadinessColor(system.readiness))
         );
 
-        // Escape server-derived content to prevent markdown injection
-        const safeDesignation = escapeMarkdown(system.designation);
+        // Escape server-derived content to prevent markdown injection in tooltip
+        const escapedDesignation = escapeMarkdown(system.designation);
         item.tooltip = new vscode.MarkdownString(
-            `**${safeDesignation}**\n\n` +
+            `**${escapedDesignation}**\n\n` +
             `Fuel Level: ${percentage}%\n\n` +
             `Status: ${system.readiness}\n\n` +
             `Class: ${this.getSystemClassName(system.systemClass)}`
@@ -290,9 +292,10 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
         gaugeItem.iconPath = new vscode.ThemeIcon('beaker');
         items.push(gaugeItem);
 
-        // System ID
+        // System ID - sanitize to prevent UI injection
+        const safeSystemId = sanitizeLabel(system.systemId, 128);
         const idItem = new TelemetryTreeItem(
-            `ID: ${system.systemId}`,
+            `ID: ${safeSystemId}`,
             TreeItemType.INFO_ITEM,
             vscode.TreeItemCollapsibleState.None
         );
@@ -441,14 +444,18 @@ export class AlertsViewProvider implements vscode.TreeDataProvider<TelemetryTree
     }
 
     private createAlertItem(alert: TelemetryAlert): TelemetryTreeItem {
+        // Sanitize server-derived content for UI labels
+        const safeDesignation = sanitizeLabel(alert.systemDesignation);
+        const safeMessage = sanitizeLabel(alert.message, 100);
+
         const item = new TelemetryTreeItem(
-            alert.systemDesignation,
+            safeDesignation,
             TreeItemType.ALERT_ITEM,
             vscode.TreeItemCollapsibleState.None,
             alert
         );
 
-        item.description = alert.message;
+        item.description = safeMessage;
         item.iconPath = new vscode.ThemeIcon(
             alert.level === ReadinessLevel.CRITICAL ? 'error' : 'warning',
             new vscode.ThemeColor(
@@ -463,13 +470,13 @@ export class AlertsViewProvider implements vscode.TreeDataProvider<TelemetryTree
             ? `${Math.floor(elapsed / 1000)}s ago`
             : `${Math.floor(elapsed / 60000)}m ago`;
 
-        // Escape server-derived content to prevent markdown injection
-        const safeMessage = escapeMarkdown(alert.message);
-        const safeSystemDesignation = escapeMarkdown(alert.systemDesignation);
+        // Escape server-derived content to prevent markdown injection in tooltip
+        const escapedMessage = escapeMarkdown(alert.message);
+        const escapedSystemDesignation = escapeMarkdown(alert.systemDesignation);
         item.tooltip = new vscode.MarkdownString(
             `**${alert.level.toUpperCase()} ALERT**\n\n` +
-            `${safeMessage}\n\n` +
-            `System: ${safeSystemDesignation}\n\n` +
+            `${escapedMessage}\n\n` +
+            `System: ${escapedSystemDesignation}\n\n` +
             `Triggered: ${timeStr}`
         );
 

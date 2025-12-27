@@ -2,7 +2,7 @@
   "name": "ag-telemetry",
   "displayName": "AG Telemetry",
   "description": "Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "publisher": "llegomark",
   "license": "MIT",
   "repository": {
@@ -86,19 +86,22 @@
           "id": "agTelemetrySystemsView",
           "name": "System Status",
           "contextualTitle": "AG Telemetry",
-          "icon": "$(dashboard)"
+          "icon": "$(dashboard)",
+          "visibility": "visible"
         },
         {
           "id": "agTelemetryFuelView",
           "name": "Fuel Reserves",
           "contextualTitle": "AG Telemetry",
-          "icon": "$(beaker)"
+          "icon": "$(beaker)",
+          "visibility": "visible"
         },
         {
           "id": "agTelemetryAlertsView",
           "name": "Active Alerts",
           "contextualTitle": "AG Telemetry",
-          "icon": "$(bell)"
+          "icon": "$(bell)",
+          "visibility": "visible"
         }
       ]
     },

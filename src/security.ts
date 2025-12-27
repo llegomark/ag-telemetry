@@ -110,6 +110,42 @@ export function sanitizeNotificationContent(text: string, maxLength: number = 10
 }
 
 /**
+ * Sanitizes a string for safe display in VS Code UI labels.
+ * Removes control characters, codicon sequences, and limits length.
+ * Use this for tree item labels, status bar text, and QuickPick labels.
+ *
+ * @param text - The untrusted text to sanitize
+ * @param maxLength - Maximum allowed length (default: 64)
+ * @returns Sanitized text safe for UI label display
+ */
+export function sanitizeLabel(text: string, maxLength: number = 64): string {
+    if (!text) {
+        return '';
+    }
+
+    let sanitized = text;
+
+    // Remove control characters (except space) and zero-width characters
+    // eslint-disable-next-line no-control-regex -- Intentionally matching control chars to remove them
+    sanitized = sanitized.replace(/[\x00-\x1F\x7F\u200B-\u200F\u2028-\u202F\uFEFF]/g, '');
+
+    // Remove VS Code codicon sequences to prevent icon spoofing
+    // Pattern matches $(icon-name) or $(icon~modifier)
+    sanitized = sanitized.replace(/\$\([^)]*\)/g, '');
+
+    // Collapse multiple spaces into one
+    sanitized = sanitized.replace(/\s+/g, ' ').trim();
+
+    // Limit length
+    const effectiveMax = Math.max(4, maxLength);
+    if (sanitized.length > effectiveMax) {
+        sanitized = sanitized.substring(0, effectiveMax - 3) + '...';
+    }
+
+    return sanitized;
+}
+
+/**
  * Type guard for validating TrendDataPoint structure.
  * Used when loading data from storage to prevent type confusion attacks.
  */

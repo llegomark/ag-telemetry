@@ -439,6 +439,7 @@ export class TelemetryService {
 
     /**
      * Process raw telemetry into FuelSystem array
+     * Validates and sanitizes server response fields to prevent DoS/rendering issues
      */
     private processTelemetryData(raw: ServerTelemetryResponse): FuelSystem[] {
         const configs = raw.userStatus?.cascadeModelConfigData?.clientModelConfigs ?? [];
@@ -447,14 +448,32 @@ export class TelemetryService {
         for (const config of configs) {
             if (!config.quotaInfo) continue;
 
-            const fuelLevel = config.quotaInfo.remainingFraction;
+            // Validate label is a non-empty string
+            const rawLabel = config.label;
+            if (typeof rawLabel !== 'string' || rawLabel.length === 0) {
+                continue; // Skip invalid entries
+            }
+
+            // Validate and clamp remainingFraction to [0, 1]
+            const rawFraction = config.quotaInfo.remainingFraction;
+            if (typeof rawFraction !== 'number' || !Number.isFinite(rawFraction)) {
+                continue; // Skip entries with invalid fuel level
+            }
+            const fuelLevel = Math.max(0, Math.min(1, rawFraction));
+
+            // Validate systemId
+            const rawSystemId = config.modelOrAlias?.model ?? rawLabel;
+            if (typeof rawSystemId !== 'string' || rawSystemId.length === 0) {
+                continue;
+            }
+
             const system: FuelSystem = {
-                systemId: config.modelOrAlias?.model ?? config.label,
-                designation: this.formatDesignation(config.label),
+                systemId: rawSystemId,
+                designation: this.formatDesignation(rawLabel),
                 fuelLevel,
                 replenishmentEta: config.quotaInfo.resetTime,
                 readiness: this.assessReadiness(fuelLevel),
-                systemClass: this.classifySystem(config.label),
+                systemClass: this.classifySystem(rawLabel),
                 isOnline: true
             };
 
