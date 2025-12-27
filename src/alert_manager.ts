@@ -7,8 +7,7 @@ import * as vscode from 'vscode';
 import {
     TelemetryAlert,
     FuelSystem,
-    ReadinessLevel,
-    AlertThresholds
+    ReadinessLevel
 } from './types';
 
 /**
@@ -18,15 +17,13 @@ export class AlertManager {
     private activeAlerts: Map<string, TelemetryAlert> = new Map();
     private acknowledgedIds: Set<string> = new Set();
     private notificationsEnabled: boolean;
-    private thresholds: AlertThresholds;
     private lastNotificationTime: Map<string, number> = new Map();
 
     // Minimum interval between notifications for same system (5 minutes)
     private readonly NOTIFICATION_COOLDOWN = 300000;
 
-    constructor(enabled: boolean, thresholds: AlertThresholds) {
+    constructor(enabled: boolean) {
         this.notificationsEnabled = enabled;
-        this.thresholds = thresholds;
     }
 
     /**
@@ -60,7 +57,7 @@ export class AlertManager {
      */
     private shouldTriggerAlert(system: FuelSystem): boolean {
         return system.readiness === ReadinessLevel.WARNING ||
-               system.readiness === ReadinessLevel.CRITICAL;
+            system.readiness === ReadinessLevel.CRITICAL;
     }
 
     /**
@@ -192,9 +189,8 @@ export class AlertManager {
     /**
      * Update configuration
      */
-    updateConfig(enabled: boolean, thresholds: AlertThresholds): void {
+    updateConfig(enabled: boolean): void {
         this.notificationsEnabled = enabled;
-        this.thresholds = thresholds;
     }
 
     /**

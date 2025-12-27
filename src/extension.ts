@@ -53,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Initialize core services
     telemetryService = new TelemetryService(config.alertThresholds);
-    alertManager = new AlertManager(config.enableNotifications, config.alertThresholds);
+    alertManager = new AlertManager(config.enableNotifications);
     flightDeck = new FlightDeck(config.flightDeckMode, config.prioritySystems);
     historyTracker = new HistoryTracker(context, config.trackHistory);
 
@@ -170,7 +170,7 @@ function handleConfigChange(): void {
 
     // Update services
     telemetryService.updateThresholds(config.alertThresholds);
-    alertManager.updateConfig(config.enableNotifications, config.alertThresholds);
+    alertManager.updateConfig(config.enableNotifications);
     flightDeck.setMode(config.flightDeckMode);
     flightDeck.setPrioritySystems(config.prioritySystems);
     historyTracker.setEnabled(config.trackHistory);

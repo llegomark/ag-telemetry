@@ -13,6 +13,20 @@ export default defineConfig([
             },
         },
     },
+    // Test file specific configuration
+    {
+        files: ["src/test/**/*.ts"],
+        languageOptions: {
+            globals: {
+                ...globals.mocha,
+            },
+        },
+        rules: {
+            // Chai assertions like expect().to.be.true are expressions, not statements
+            "@typescript-eslint/no-unused-expressions": "off",
+            "no-unused-expressions": "off",
+        },
+    },
     {
         ignores: ["out/", "node_modules/"],
     },
