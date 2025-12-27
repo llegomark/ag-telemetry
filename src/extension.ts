@@ -15,7 +15,7 @@ import {
     TelemetrySnapshot,
     FuelSystem
 } from './types';
-import { isValidAlertThresholds, sanitizeLabel } from './security';
+import { isValidAlertThresholds, normalizeScanInterval, sanitizeLabel } from './security';
 
 let telemetryService: TelemetryService;
 let alertManager: AlertManager;
@@ -39,9 +39,25 @@ const DEFAULT_THRESHOLDS: AlertThresholds = {
  */
 function loadConfig(): TelemetryConfig {
     const config = vscode.workspace.getConfiguration('agTelemetry');
+    const isTrusted = vscode.workspace.isTrusted;
+
+    const readSetting = <T>(key: string, fallback: T): T => {
+        if (isTrusted) {
+            return config.get<T>(key, fallback);
+        }
+
+        const inspected = config.inspect<T>(key);
+        if (inspected?.globalValue !== undefined) {
+            return inspected.globalValue as T;
+        }
+        if (inspected?.defaultValue !== undefined) {
+            return inspected.defaultValue as T;
+        }
+        return fallback;
+    };
 
     // Get user-configured thresholds
-    const userThresholds = config.get<AlertThresholds>('alertThresholds', DEFAULT_THRESHOLDS);
+    const userThresholds = readSetting<AlertThresholds>('alertThresholds', DEFAULT_THRESHOLDS);
 
     // Validate threshold ordering (caution > warning > critical)
     // Fall back to defaults if invalid to prevent incorrect alert behavior
@@ -49,13 +65,42 @@ function loadConfig(): TelemetryConfig {
         ? userThresholds
         : DEFAULT_THRESHOLDS;
 
+    const rawScanInterval = readSetting<number>('scanInterval', 90);
+    const scanInterval = normalizeScanInterval(rawScanInterval, 90);
+
+    const rawEnableNotifications = readSetting<boolean>('enableNotifications', true);
+    const enableNotifications = typeof rawEnableNotifications === 'boolean'
+        ? rawEnableNotifications
+        : true;
+
+    const rawFlightDeckMode = readSetting<string>('flightDeckMode', 'compact');
+    const flightDeckMode = rawFlightDeckMode === 'compact' ||
+        rawFlightDeckMode === 'detailed' ||
+        rawFlightDeckMode === 'minimal'
+        ? rawFlightDeckMode
+        : 'compact';
+
+    const rawTrackHistory = readSetting<boolean>('trackHistory', true);
+    const trackHistory = typeof rawTrackHistory === 'boolean'
+        ? rawTrackHistory
+        : true;
+
+    const rawPrioritySystems = readSetting<string[]>('prioritySystems', []);
+    const prioritySystems = Array.isArray(rawPrioritySystems)
+        ? rawPrioritySystems
+            .filter((value): value is string => typeof value === 'string')
+            .map(value => value.trim())
+            .filter(value => value.length > 0 && value.length <= 256)
+            .slice(0, 100)
+        : [];
+
     return {
-        scanInterval: config.get<number>('scanInterval', 90),
+        scanInterval,
         alertThresholds,
-        enableNotifications: config.get<boolean>('enableNotifications', true),
-        flightDeckMode: config.get<'compact' | 'detailed' | 'minimal'>('flightDeckMode', 'compact'),
-        trackHistory: config.get<boolean>('trackHistory', true),
-        prioritySystems: config.get<string[]>('prioritySystems', [])
+        enableNotifications,
+        flightDeckMode,
+        trackHistory,
+        prioritySystems
     };
 }
 

@@ -37,6 +37,25 @@ export function isValidPid(pid: number): boolean {
 }
 
 /**
+ * Validates that a CSRF token matches expected format and length bounds.
+ *
+ * @param token - The CSRF token to validate
+ * @returns true if the token is valid, false otherwise
+ */
+export function isValidCsrfToken(token: string): boolean {
+    if (typeof token !== 'string') {
+        return false;
+    }
+
+    const length = token.length;
+    if (length < 6 || length > 256) {
+        return false;
+    }
+
+    return /^[a-f0-9-]+$/i.test(token);
+}
+
+/**
  * Validates that alert thresholds are properly ordered.
  * Thresholds must satisfy: caution > warning > critical > 0
  * All values must be between 1 and 100 (percentages).
@@ -76,6 +95,27 @@ export function isValidAlertThresholds(thresholds: {
 
     // Must be properly ordered: caution > warning > critical
     return caution > warning && warning > critical;
+}
+
+/**
+ * Normalizes scan interval configuration values into a safe range.
+ * Ensures the value is a finite number and clamps it between 30 seconds and 24 hours.
+ *
+ * @param value - The raw interval value to normalize
+ * @param fallback - Default value if input is invalid
+ * @returns The normalized interval in seconds
+ */
+export function normalizeScanInterval(value: unknown, fallback: number = 90): number {
+    const minSeconds = 30;
+    const maxSeconds = 86400;
+    const fallbackValue = Number.isFinite(fallback) ? Math.floor(fallback) : 90;
+
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return Math.min(maxSeconds, Math.max(minSeconds, fallbackValue));
+    }
+
+    const normalized = Math.floor(value);
+    return Math.min(maxSeconds, Math.max(minSeconds, normalized));
 }
 
 /**

@@ -7,8 +7,10 @@ import { expect } from 'chai';
 import {
     escapeMarkdown,
     isValidPid,
+    isValidCsrfToken,
     isValidTrendDataPoint,
     isValidAlertThresholds,
+    normalizeScanInterval,
     sanitizeNotificationContent,
     sanitizeLabel
 } from '../../security';
@@ -129,6 +131,32 @@ describe('Security Utilities', () => {
             expect(isValidPid(4194304)).to.be.true;  // Upper bound
             expect(isValidPid(0)).to.be.false;       // Below lower bound
             expect(isValidPid(4194305)).to.be.false; // Above upper bound
+        });
+    });
+
+    describe('isValidCsrfToken', () => {
+        it('should return true for valid tokens', () => {
+            expect(isValidCsrfToken('abc123')).to.be.true;
+            expect(isValidCsrfToken('a1b2c3d4-e5f6-7890-abcd-ef1234567890')).to.be.true;
+            expect(isValidCsrfToken('ABCDEF123456')).to.be.true;
+        });
+
+        it('should return false for invalid length', () => {
+            expect(isValidCsrfToken('')).to.be.false;
+            expect(isValidCsrfToken('abc12')).to.be.false;
+            expect(isValidCsrfToken('a'.repeat(257))).to.be.false;
+        });
+
+        it('should return false for invalid characters', () => {
+            expect(isValidCsrfToken('abc_123')).to.be.false;
+            expect(isValidCsrfToken('abc 123')).to.be.false;
+            expect(isValidCsrfToken('abc123!')).to.be.false;
+            expect(isValidCsrfToken('zzzzzz')).to.be.false;
+        });
+
+        it('should return false for non-string input', () => {
+            expect(isValidCsrfToken(null as unknown as string)).to.be.false;
+            expect(isValidCsrfToken(undefined as unknown as string)).to.be.false;
         });
     });
 
@@ -432,6 +460,41 @@ describe('Security Utilities', () => {
             } as { caution: number; warning: number; critical: number })).to.be.false;
 
             expect(isValidAlertThresholds({} as { caution: number; warning: number; critical: number })).to.be.false;
+        });
+    });
+
+    describe('normalizeScanInterval', () => {
+        it('should clamp values below minimum to 30 seconds', () => {
+            expect(normalizeScanInterval(0)).to.equal(30);
+            expect(normalizeScanInterval(-5)).to.equal(30);
+            expect(normalizeScanInterval(10)).to.equal(30);
+        });
+
+        it('should clamp values above maximum to 86400 seconds', () => {
+            expect(normalizeScanInterval(90000)).to.equal(86400);
+            expect(normalizeScanInterval(1000000)).to.equal(86400);
+        });
+
+        it('should floor fractional values', () => {
+            expect(normalizeScanInterval(45.9)).to.equal(45);
+        });
+
+        it('should use fallback for non-finite values', () => {
+            expect(normalizeScanInterval(NaN, 120)).to.equal(120);
+            expect(normalizeScanInterval(Infinity, 120)).to.equal(120);
+        });
+
+        it('should use default fallback when input and fallback are invalid', () => {
+            expect(normalizeScanInterval(NaN, NaN as unknown as number)).to.equal(90);
+        });
+
+        it('should fall back when value is not a number', () => {
+            expect(normalizeScanInterval('90' as unknown as number, 120)).to.equal(120);
+        });
+
+        it('should clamp fallback into valid range', () => {
+            expect(normalizeScanInterval(undefined, 10)).to.equal(30);
+            expect(normalizeScanInterval(undefined, 100000)).to.equal(86400);
         });
     });
 

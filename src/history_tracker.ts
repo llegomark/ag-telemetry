@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import { FuelSystem, TrendDataPoint } from './types';
-import { isValidTrendDataPoint } from './security';
+import { isValidTrendDataPoint, sanitizeLabel } from './security';
 
 interface StoredHistory {
     version: number;
@@ -26,6 +26,7 @@ export class HistoryTracker {
     private static readonly MAX_STORAGE_FAILURES = 3;
     // Limit total unique systems to prevent storage exhaustion from malicious server
     private static readonly MAX_UNIQUE_SYSTEMS = 50;
+    private static readonly MAX_SYSTEM_ID_LENGTH = 256;
 
     private dataPoints: TrendDataPoint[] = [];
     private lastSampleTime: Map<string, number> = new Map();
@@ -54,6 +55,11 @@ export class HistoryTracker {
         const currentSystemSet = new Set(currentSystems);
 
         for (const system of systems) {
+            if (system.systemId.length === 0 ||
+                system.systemId.length > HistoryTracker.MAX_SYSTEM_ID_LENGTH) {
+                continue;
+            }
+
             const lastSample = this.lastSampleTime.get(system.systemId) ?? 0;
 
             // Throttle sampling
@@ -191,7 +197,7 @@ export class HistoryTracker {
             return;
         }
 
-        const items: vscode.QuickPickItem[] = systems.map(systemId => {
+        const items: Array<vscode.QuickPickItem & { systemId: string }> = systems.map(systemId => {
             const points = this.getSystemTrend(systemId, 24 * 60 * 60 * 1000);
             const trend = this.calculateTrend(systemId);
             const rate = this.calculateConsumptionRate(systemId);
@@ -208,10 +214,13 @@ export class HistoryTracker {
                 unknown: '$(question)'
             };
 
+            const safeSystemId = sanitizeLabel(systemId, 80);
+
             return {
-                label: `${trendIcon[trend]} ${systemId}`,
+                label: `${trendIcon[trend]} ${safeSystemId}`,
                 description: this.renderSparkline(points),
-                detail
+                detail,
+                systemId
             };
         });
 
@@ -221,9 +230,7 @@ export class HistoryTracker {
         });
 
         if (selected) {
-            await this.showDetailedTrend(
-                selected.label.replace(/\$\([^)]+\)\s*/, '')
-            );
+            await this.showDetailedTrend(selected.systemId);
         }
     }
 
@@ -244,8 +251,9 @@ export class HistoryTracker {
         const rate = this.calculateConsumptionRate(systemId);
         const timeToEmpty = this.estimateTimeToEmpty(systemId, last.fuelLevel);
 
+        const safeSystemId = sanitizeLabel(systemId, 128);
         const lines: string[] = [
-            `System: ${systemId}`,
+            `System: ${safeSystemId}`,
             `Current Level: ${Math.round(last.fuelLevel * 100)}%`,
             `Trend: ${trend}`,
             `Data Points: ${points.length}`,

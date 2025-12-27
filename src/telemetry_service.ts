@@ -4,6 +4,7 @@
  */
 
 import * as https from 'https';
+import { IncomingMessage } from 'http';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { platform } from 'os';
@@ -18,7 +19,7 @@ import {
     TelemetryEventType,
     AlertThresholds
 } from './types';
-import { isValidPid } from './security';
+import { isValidCsrfToken, isValidPid, normalizeScanInterval } from './security';
 
 const execAsync = promisify(exec);
 
@@ -59,6 +60,12 @@ export class TelemetryService {
 
     /** Threshold for showing user feedback about failures */
     private static readonly FAILURE_THRESHOLD = 3;
+    private static readonly MAX_SCAN_PORTS = 32;
+    private static readonly MAX_RESPONSE_BYTES = 1024 * 1024;
+    private static readonly MAX_PROBE_BYTES = 64 * 1024;
+    private static readonly MAX_SYSTEMS = 200;
+    private static readonly MAX_LABEL_LENGTH = 128;
+    private static readonly MAX_SYSTEM_ID_LENGTH = 256;
 
     constructor(private thresholds: AlertThresholds) {}
 
@@ -80,6 +87,41 @@ export class TelemetryService {
             payload
         };
         this.eventSubscribers.forEach(cb => cb(event));
+    }
+
+    private static isValidPort(port: number): boolean {
+        return Number.isInteger(port) && port > 0 && port < 65536;
+    }
+
+    private readLimitedResponse(res: IncomingMessage, maxBytes: number): Promise<string | null> {
+        return new Promise(resolve => {
+            let data = '';
+            let size = 0;
+            let resolved = false;
+
+            const finish = (value: string | null) => {
+                if (!resolved) {
+                    resolved = true;
+                    resolve(value);
+                }
+            };
+
+            res.on('data', chunk => {
+                const chunkSize = typeof chunk === 'string'
+                    ? Buffer.byteLength(chunk)
+                    : chunk.length;
+                size += chunkSize;
+                if (size > maxBytes) {
+                    res.destroy();
+                    finish(null);
+                    return;
+                }
+                data += chunk;
+            });
+
+            res.on('end', () => finish(data));
+            res.on('error', () => finish(null));
+        });
     }
 
     /**
@@ -157,7 +199,19 @@ export class TelemetryService {
     private extractBeaconData(raw: string, os: string): { pid: number; token: string } | null {
         if (!raw.trim()) return null;
 
-        const tokenPattern = /--csrf[_-]?token[=\s]+([a-f0-9-]+)/i;
+        const tokenPattern = /--csrf[_-]?token[=\s]+([a-f0-9-]+)/ig;
+        const extractToken = (text: string): string | null => {
+            tokenPattern.lastIndex = 0;
+            let match: RegExpExecArray | null;
+            let token: string | null = null;
+            while ((match = tokenPattern.exec(text)) !== null) {
+                const candidate = match[1];
+                if (isValidCsrfToken(candidate)) {
+                    token = candidate;
+                }
+            }
+            return token;
+        };
 
         if (os === 'win32') {
             try {
@@ -165,10 +219,11 @@ export class TelemetryService {
                 const processes = Array.isArray(data) ? data : [data];
 
                 for (const proc of processes) {
-                    const cmdLine = proc.CommandLine || '';
-                    const match = cmdLine.match(tokenPattern);
-                    if (match && proc.ProcessId) {
-                        return { pid: proc.ProcessId, token: match[1] };
+                    const cmdLine = typeof proc.CommandLine === 'string' ? proc.CommandLine : '';
+                    const token = extractToken(cmdLine);
+                    const pid = Number(proc.ProcessId);
+                    if (token && isValidPid(pid)) {
+                        return { pid, token };
                     }
                 }
             } catch {
@@ -177,11 +232,15 @@ export class TelemetryService {
         } else {
             const lines = raw.trim().split('\n');
             for (const line of lines) {
-                const match = line.match(tokenPattern);
-                if (match) {
-                    const pidMatch = line.trim().match(/^(\d+)/);
-                    if (pidMatch) {
-                        return { pid: parseInt(pidMatch[1], 10), token: match[1] };
+                const token = extractToken(line);
+                if (!token) {
+                    continue;
+                }
+                const pidMatch = line.trim().match(/^(\d+)/);
+                if (pidMatch) {
+                    const pid = parseInt(pidMatch[1], 10);
+                    if (isValidPid(pid)) {
+                        return { pid, token };
                     }
                 }
             }
@@ -241,21 +300,27 @@ export class TelemetryService {
             return [];
         }
 
-        const frequencies: number[] = [];
+        const ports = new Set<number>();
         for (const line of output.split('\n')) {
             const port = parseInt(line.trim(), 10);
-            if (!isNaN(port) && port > 0 && port < 65536) {
-                frequencies.push(port);
+            if (TelemetryService.isValidPort(port)) {
+                ports.add(port);
             }
         }
 
-        return frequencies;
+        return Array.from(ports)
+            .sort((a, b) => a - b)
+            .slice(0, TelemetryService.MAX_SCAN_PORTS);
     }
 
     /**
      * Probe a frequency to verify uplink capability
      */
     private probeFrequency(port: number, token: string): Promise<boolean> {
+        if (!TelemetryService.isValidPort(port) || !isValidCsrfToken(token)) {
+            return Promise.resolve(false);
+        }
+
         return new Promise(resolve => {
             const payload = JSON.stringify({
                 context: { properties: { ide: 'antigravity' } }
@@ -280,7 +345,15 @@ export class TelemetryService {
                 rejectUnauthorized: false,
                 timeout: 3000
             }, res => {
-                resolve(res.statusCode === 200);
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    resolve(false);
+                    return;
+                }
+
+                this.readLimitedResponse(res, TelemetryService.MAX_PROBE_BYTES).then(body => {
+                    resolve(body !== null);
+                });
             });
 
             req.on('error', () => resolve(false));
@@ -395,6 +468,13 @@ export class TelemetryService {
      * Transmit query to acquire system status
      */
     private transmitQuery(): Promise<ServerTelemetryResponse | null> {
+        const port = this.uplink.port;
+        const token = this.uplink.securityToken ?? '';
+
+        if (!TelemetryService.isValidPort(port ?? 0) || !isValidCsrfToken(token)) {
+            return Promise.resolve(null);
+        }
+
         return new Promise(resolve => {
             const payload = JSON.stringify({
                 metadata: { ideName: 'antigravity' }
@@ -402,24 +482,32 @@ export class TelemetryService {
 
             const req = https.request({
                 hostname: '127.0.0.1',
-                port: this.uplink.port,
+                port,
                 path: '/exa.language_server_pb.LanguageServerService/GetUserStatus',
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Connect-Protocol-Version': '1',
-                    'X-Codeium-Csrf-Token': this.uplink.securityToken!
+                    'X-Codeium-Csrf-Token': token
                 },
                 // SECURITY NOTE: rejectUnauthorized is disabled for localhost self-signed cert.
                 // See probeFrequency() for detailed security rationale.
                 rejectUnauthorized: false,
                 timeout: 5000
             }, res => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    resolve(null);
+                    return;
+                }
+
+                this.readLimitedResponse(res, TelemetryService.MAX_RESPONSE_BYTES).then(body => {
+                    if (!body) {
+                        resolve(null);
+                        return;
+                    }
                     try {
-                        resolve(JSON.parse(data));
+                        resolve(JSON.parse(body));
                     } catch {
                         resolve(null);
                     }
@@ -446,13 +534,25 @@ export class TelemetryService {
         const systems: FuelSystem[] = [];
 
         for (const config of configs) {
+            if (systems.length >= TelemetryService.MAX_SYSTEMS) {
+                break;
+            }
+
             if (!config.quotaInfo) continue;
 
             // Validate label is a non-empty string
             const rawLabel = config.label;
-            if (typeof rawLabel !== 'string' || rawLabel.length === 0) {
+            if (typeof rawLabel !== 'string') {
+                continue;
+            }
+            const trimmedLabel = rawLabel.trim();
+            if (trimmedLabel.length === 0) {
                 continue; // Skip invalid entries
             }
+
+            const safeLabel = trimmedLabel.length > TelemetryService.MAX_LABEL_LENGTH
+                ? trimmedLabel.slice(0, TelemetryService.MAX_LABEL_LENGTH)
+                : trimmedLabel;
 
             // Validate and clamp remainingFraction to [0, 1]
             const rawFraction = config.quotaInfo.remainingFraction;
@@ -462,18 +562,27 @@ export class TelemetryService {
             const fuelLevel = Math.max(0, Math.min(1, rawFraction));
 
             // Validate systemId
-            const rawSystemId = config.modelOrAlias?.model ?? rawLabel;
-            if (typeof rawSystemId !== 'string' || rawSystemId.length === 0) {
+            const rawSystemId = config.modelOrAlias?.model ?? trimmedLabel;
+            if (typeof rawSystemId !== 'string') {
+                continue;
+            }
+            const trimmedSystemId = rawSystemId.trim();
+            if (trimmedSystemId.length === 0 ||
+                trimmedSystemId.length > TelemetryService.MAX_SYSTEM_ID_LENGTH) {
                 continue;
             }
 
+            const resetTime = typeof config.quotaInfo.resetTime === 'string'
+                ? config.quotaInfo.resetTime
+                : undefined;
+
             const system: FuelSystem = {
-                systemId: rawSystemId,
-                designation: this.formatDesignation(rawLabel),
+                systemId: trimmedSystemId,
+                designation: this.formatDesignation(safeLabel),
                 fuelLevel,
-                replenishmentEta: config.quotaInfo.resetTime,
+                replenishmentEta: resetTime,
                 readiness: this.assessReadiness(fuelLevel),
-                systemClass: this.classifySystem(rawLabel),
+                systemClass: this.classifySystem(safeLabel),
                 isOnline: true
             };
 
@@ -641,7 +750,8 @@ export class TelemetryService {
     startPeriodicScans(intervalSeconds: number): void {
         this.stopPeriodicScans();
 
-        const interval = Math.max(30, intervalSeconds) * 1000;
+        const normalized = normalizeScanInterval(intervalSeconds, 90);
+        const interval = normalized * 1000;
         this.scanTimer = setInterval(() => {
             this.acquireTelemetry();
         }, interval);
