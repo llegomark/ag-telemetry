@@ -9,6 +9,7 @@ import {
     FuelSystem,
     ReadinessLevel
 } from './types';
+import { sanitizeNotificationContent } from './security';
 
 /**
  * Manages telemetry alerts and user notifications
@@ -116,6 +117,7 @@ export class AlertManager {
 
     /**
      * Show VS Code notification for alert
+     * Sanitizes system designation to prevent UI abuse from malicious server responses
      */
     private showNotification(alert: TelemetryAlert, system: FuelSystem): void {
         // Check cooldown
@@ -127,9 +129,12 @@ export class AlertManager {
         this.lastNotificationTime.set(system.systemId, Date.now());
         const percentage = Math.round(system.fuelLevel * 100);
 
+        // Sanitize designation to prevent UI abuse (overly long strings, control chars)
+        const safeDesignation = sanitizeNotificationContent(system.designation, 50);
+
         if (alert.level === ReadinessLevel.CRITICAL) {
             vscode.window.showErrorMessage(
-                `[AG Telemetry] ${system.designation}: ${percentage}% fuel remaining`,
+                `[AG Telemetry] ${safeDesignation}: ${percentage}% fuel remaining`,
                 'View Details',
                 'Dismiss'
             ).then(action => {
@@ -139,7 +144,7 @@ export class AlertManager {
             });
         } else {
             vscode.window.showWarningMessage(
-                `[AG Telemetry] ${system.designation}: ${percentage}% fuel remaining`,
+                `[AG Telemetry] ${safeDesignation}: ${percentage}% fuel remaining`,
                 'View Details'
             ).then(action => {
                 if (action === 'View Details') {

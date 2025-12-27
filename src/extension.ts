@@ -15,6 +15,7 @@ import {
     TelemetrySnapshot,
     FuelSystem
 } from './types';
+import { isValidAlertThresholds } from './security';
 
 let telemetryService: TelemetryService;
 let alertManager: AlertManager;
@@ -25,19 +26,32 @@ let systemsProvider: SystemsViewProvider;
 let fuelProvider: FuelViewProvider;
 let alertsProvider: AlertsViewProvider;
 
+/** Default alert thresholds that are known to be valid */
+const DEFAULT_THRESHOLDS: AlertThresholds = {
+    caution: 40,
+    warning: 20,
+    critical: 5
+};
+
 /**
  * Load configuration from VS Code settings
+ * Validates threshold ordering and falls back to defaults if invalid
  */
 function loadConfig(): TelemetryConfig {
     const config = vscode.workspace.getConfiguration('agTelemetry');
 
+    // Get user-configured thresholds
+    const userThresholds = config.get<AlertThresholds>('alertThresholds', DEFAULT_THRESHOLDS);
+
+    // Validate threshold ordering (caution > warning > critical)
+    // Fall back to defaults if invalid to prevent incorrect alert behavior
+    const alertThresholds = isValidAlertThresholds(userThresholds)
+        ? userThresholds
+        : DEFAULT_THRESHOLDS;
+
     return {
         scanInterval: config.get<number>('scanInterval', 90),
-        alertThresholds: config.get<AlertThresholds>('alertThresholds', {
-            caution: 40,
-            warning: 20,
-            critical: 5
-        }),
+        alertThresholds,
         enableNotifications: config.get<boolean>('enableNotifications', true),
         flightDeckMode: config.get<'compact' | 'detailed' | 'minimal'>('flightDeckMode', 'compact'),
         trackHistory: config.get<boolean>('trackHistory', true),
@@ -49,6 +63,16 @@ function loadConfig(): TelemetryConfig {
  * Extension activation
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    // Security: Check workspace trust before full activation
+    // In untrusted workspaces, we still activate but warn the user
+    // since the extension primarily reads from a local trusted process
+    if (!vscode.workspace.isTrusted) {
+        vscode.window.showWarningMessage(
+            'AG Telemetry: Running in untrusted workspace. ' +
+            'Some configuration options from workspace settings may be ignored.'
+        );
+    }
+
     const config = loadConfig();
 
     // Initialize core services
@@ -389,6 +413,7 @@ async function showAlertConfiguration(): Promise<void> {
 
 /**
  * Update a specific threshold
+ * Validates that the new threshold maintains proper ordering
  */
 async function updateThreshold(
     level: 'caution' | 'warning' | 'critical',
@@ -396,13 +421,20 @@ async function updateThreshold(
 ): Promise<void> {
     const input = await vscode.window.showInputBox({
         title: `Set ${level} threshold`,
-        prompt: 'Enter percentage (1-100)',
+        prompt: 'Enter percentage (1-100). Must maintain order: caution > warning > critical',
         value: current[level].toString(),
         validateInput: (value) => {
             const num = parseInt(value, 10);
             if (isNaN(num) || num < 1 || num > 100) {
                 return 'Please enter a number between 1 and 100';
             }
+
+            // Validate ordering with the proposed new value
+            const proposed = { ...current, [level]: num };
+            if (!isValidAlertThresholds(proposed)) {
+                return `Invalid ordering. Thresholds must satisfy: caution (${level === 'caution' ? num : current.caution}) > warning (${level === 'warning' ? num : current.warning}) > critical (${level === 'critical' ? num : current.critical})`;
+            }
+
             return null;
         }
     });

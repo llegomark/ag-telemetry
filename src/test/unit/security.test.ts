@@ -4,7 +4,13 @@
  */
 
 import { expect } from 'chai';
-import { escapeMarkdown, isValidPid, isValidTrendDataPoint } from '../../security';
+import {
+    escapeMarkdown,
+    isValidPid,
+    isValidTrendDataPoint,
+    isValidAlertThresholds,
+    sanitizeNotificationContent
+} from '../../security';
 
 describe('Security Utilities', () => {
 
@@ -295,6 +301,243 @@ describe('Security Utilities', () => {
                 anotherField: 123
             };
             expect(isValidTrendDataPoint(withExtra)).to.be.true;
+        });
+    });
+
+    describe('isValidAlertThresholds', () => {
+        it('should return true for valid ordered thresholds', () => {
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: 20,
+                critical: 5
+            })).to.be.true;
+
+            expect(isValidAlertThresholds({
+                caution: 90,
+                warning: 50,
+                critical: 10
+            })).to.be.true;
+        });
+
+        it('should return true for boundary values (1-100)', () => {
+            expect(isValidAlertThresholds({
+                caution: 100,
+                warning: 50,
+                critical: 1
+            })).to.be.true;
+
+            expect(isValidAlertThresholds({
+                caution: 3,
+                warning: 2,
+                critical: 1
+            })).to.be.true;
+        });
+
+        it('should return false when caution <= warning', () => {
+            expect(isValidAlertThresholds({
+                caution: 20,
+                warning: 20,
+                critical: 5
+            })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 15,
+                warning: 20,
+                critical: 5
+            })).to.be.false;
+        });
+
+        it('should return false when warning <= critical', () => {
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: 5,
+                critical: 5
+            })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: 4,
+                critical: 5
+            })).to.be.false;
+        });
+
+        it('should return false for values outside 1-100 range', () => {
+            expect(isValidAlertThresholds({
+                caution: 0,
+                warning: 20,
+                critical: 5
+            })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 101,
+                warning: 20,
+                critical: 5
+            })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: -10,
+                critical: 5
+            })).to.be.false;
+        });
+
+        it('should return false for non-number values', () => {
+            expect(isValidAlertThresholds({
+                caution: '40' as unknown as number,
+                warning: 20,
+                critical: 5
+            })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: null as unknown as number,
+                critical: 5
+            })).to.be.false;
+        });
+
+        it('should return false for NaN or Infinity', () => {
+            expect(isValidAlertThresholds({
+                caution: NaN,
+                warning: 20,
+                critical: 5
+            })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: Infinity,
+                critical: 5
+            })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: 20,
+                critical: -Infinity
+            })).to.be.false;
+        });
+
+        it('should return false for null or undefined', () => {
+            expect(isValidAlertThresholds(null)).to.be.false;
+            expect(isValidAlertThresholds(undefined)).to.be.false;
+        });
+
+        it('should return false for missing properties', () => {
+            expect(isValidAlertThresholds({
+                caution: 40,
+                warning: 20
+            } as { caution: number; warning: number; critical: number })).to.be.false;
+
+            expect(isValidAlertThresholds({
+                caution: 40
+            } as { caution: number; warning: number; critical: number })).to.be.false;
+
+            expect(isValidAlertThresholds({} as { caution: number; warning: number; critical: number })).to.be.false;
+        });
+    });
+
+    describe('sanitizeNotificationContent', () => {
+        it('should return empty string for null/undefined/empty input', () => {
+            expect(sanitizeNotificationContent('')).to.equal('');
+            expect(sanitizeNotificationContent(null as unknown as string)).to.equal('');
+            expect(sanitizeNotificationContent(undefined as unknown as string)).to.equal('');
+        });
+
+        it('should preserve normal text', () => {
+            expect(sanitizeNotificationContent('Gemini Pro')).to.equal('Gemini Pro');
+            expect(sanitizeNotificationContent('Claude 3.5 Sonnet')).to.equal('Claude 3.5 Sonnet');
+        });
+
+        it('should remove control characters', () => {
+            // Null byte
+            expect(sanitizeNotificationContent('Test\x00String')).to.equal('TestString');
+            // Tab (control char \x09) - removed entirely
+            expect(sanitizeNotificationContent('Test\tString')).to.equal('TestString');
+            // Newline (\x0A) - removed entirely
+            expect(sanitizeNotificationContent('Test\nString')).to.equal('TestString');
+            // Carriage return (\x0D) - removed entirely
+            expect(sanitizeNotificationContent('Test\rString')).to.equal('TestString');
+            // Bell (\x07)
+            expect(sanitizeNotificationContent('Test\x07String')).to.equal('TestString');
+            // Multiple spaces (not control chars) are normalized
+            expect(sanitizeNotificationContent('Test   String')).to.equal('Test String');
+        });
+
+        it('should remove zero-width characters', () => {
+            // Zero-width space (U+200B)
+            expect(sanitizeNotificationContent('Test\u200BString')).to.equal('TestString');
+            // Zero-width non-joiner (U+200C)
+            expect(sanitizeNotificationContent('Test\u200CString')).to.equal('TestString');
+            // Zero-width joiner (U+200D)
+            expect(sanitizeNotificationContent('Test\u200DString')).to.equal('TestString');
+            // Left-to-right mark (U+200E)
+            expect(sanitizeNotificationContent('Test\u200EString')).to.equal('TestString');
+            // Right-to-left mark (U+200F)
+            expect(sanitizeNotificationContent('Test\u200FString')).to.equal('TestString');
+            // Byte order mark (U+FEFF)
+            expect(sanitizeNotificationContent('\uFEFFTest')).to.equal('Test');
+        });
+
+        it('should normalize excessive whitespace', () => {
+            expect(sanitizeNotificationContent('Test   String')).to.equal('Test String');
+            expect(sanitizeNotificationContent('  Leading')).to.equal('Leading');
+            expect(sanitizeNotificationContent('Trailing  ')).to.equal('Trailing');
+            expect(sanitizeNotificationContent('  Both  ')).to.equal('Both');
+        });
+
+        it('should truncate strings exceeding max length', () => {
+            const longString = 'A'.repeat(150);
+            const result = sanitizeNotificationContent(longString);
+            expect(result.length).to.equal(100); // default maxLength
+            expect(result.endsWith('...')).to.be.true;
+        });
+
+        it('should respect custom max length', () => {
+            const input = 'This is a test string for truncation';
+            const result = sanitizeNotificationContent(input, 20);
+            expect(result.length).to.equal(20);
+            expect(result).to.equal('This is a test st...');
+        });
+
+        it('should not truncate strings at or below max length', () => {
+            const input = 'Short text';
+            expect(sanitizeNotificationContent(input, 100)).to.equal('Short text');
+            expect(sanitizeNotificationContent(input, 10)).to.equal('Short text');
+        });
+
+        it('should handle very small maxLength values gracefully', () => {
+            const input = 'This is a long string';
+            // Minimum effective maxLength is 4 to fit "X..."
+            expect(sanitizeNotificationContent(input, 1)).to.equal('T...');
+            expect(sanitizeNotificationContent(input, 2)).to.equal('T...');
+            expect(sanitizeNotificationContent(input, 3)).to.equal('T...');
+            expect(sanitizeNotificationContent(input, 4)).to.equal('T...');
+            expect(sanitizeNotificationContent(input, 5)).to.equal('Th...');
+            expect(sanitizeNotificationContent(input, 0)).to.equal('T...');
+            expect(sanitizeNotificationContent(input, -5)).to.equal('T...');
+        });
+
+        it('should handle unicode and emoji safely', () => {
+            expect(sanitizeNotificationContent('System 🚀')).to.equal('System 🚀');
+            expect(sanitizeNotificationContent('日本語')).to.equal('日本語');
+            expect(sanitizeNotificationContent('Ñoño')).to.equal('Ñoño');
+        });
+
+        it('should handle potential spoofing attempts', () => {
+            // Right-to-left override (U+202E) - used for spoofing text direction
+            expect(sanitizeNotificationContent('Test\u202EEvil')).to.equal('TestEvil');
+            // Line separator (U+2028)
+            expect(sanitizeNotificationContent('Line1\u2028Line2')).to.equal('Line1Line2');
+            // Paragraph separator (U+2029)
+            expect(sanitizeNotificationContent('Para1\u2029Para2')).to.equal('Para1Para2');
+        });
+
+        it('should handle combined attacks', () => {
+            // Long string with control chars and zero-width chars
+            const attack = '\u200B' + 'A'.repeat(200) + '\x00\u200E';
+            const result = sanitizeNotificationContent(attack, 50);
+            expect(result.length).to.equal(50);
+            expect(result.endsWith('...')).to.be.true;
+            expect(result).to.not.include('\u200B');
+            expect(result).to.not.include('\x00');
         });
     });
 });

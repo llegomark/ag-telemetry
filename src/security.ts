@@ -37,6 +37,79 @@ export function isValidPid(pid: number): boolean {
 }
 
 /**
+ * Validates that alert thresholds are properly ordered.
+ * Thresholds must satisfy: caution > warning > critical > 0
+ * All values must be between 1 and 100 (percentages).
+ *
+ * @param thresholds - The threshold configuration to validate
+ * @returns true if thresholds are valid and properly ordered
+ */
+export function isValidAlertThresholds(thresholds: {
+    caution: number;
+    warning: number;
+    critical: number;
+} | null | undefined): boolean {
+    // Handle null/undefined input gracefully
+    if (!thresholds || typeof thresholds !== 'object') {
+        return false;
+    }
+
+    const { caution, warning, critical } = thresholds;
+
+    // All must be numbers
+    if (
+        typeof caution !== 'number' ||
+        typeof warning !== 'number' ||
+        typeof critical !== 'number'
+    ) {
+        return false;
+    }
+
+    // All must be finite values in valid percentage range
+    if (
+        !Number.isFinite(caution) || caution < 1 || caution > 100 ||
+        !Number.isFinite(warning) || warning < 1 || warning > 100 ||
+        !Number.isFinite(critical) || critical < 1 || critical > 100
+    ) {
+        return false;
+    }
+
+    // Must be properly ordered: caution > warning > critical
+    return caution > warning && warning > critical;
+}
+
+/**
+ * Sanitizes notification content by truncating overly long strings
+ * and removing potentially misleading characters.
+ *
+ * @param text - The text to sanitize for notification display
+ * @param maxLength - Maximum allowed length (default: 100, minimum: 4)
+ * @returns Sanitized text safe for notification display
+ */
+export function sanitizeNotificationContent(text: string, maxLength: number = 100): string {
+    if (!text) {
+        return '';
+    }
+
+    // Ensure maxLength is at least 4 to accommodate "..." plus one character
+    const effectiveMaxLength = Math.max(4, maxLength);
+
+    // Remove control characters and zero-width characters that could be used for spoofing
+    // eslint-disable-next-line no-control-regex -- Intentionally matching control chars to remove them
+    let sanitized = text.replace(/[\x00-\x1F\x7F\u200B-\u200F\u2028-\u202F\uFEFF]/g, '');
+
+    // Remove excessive whitespace
+    sanitized = sanitized.replace(/\s+/g, ' ').trim();
+
+    // Truncate if too long
+    if (sanitized.length > effectiveMaxLength) {
+        sanitized = sanitized.substring(0, effectiveMaxLength - 3) + '...';
+    }
+
+    return sanitized;
+}
+
+/**
  * Type guard for validating TrendDataPoint structure.
  * Used when loading data from storage to prevent type confusion attacks.
  */

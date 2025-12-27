@@ -5,6 +5,36 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2025-12-27
+
+### Security
+
+- **Alert threshold validation**: Added `isValidAlertThresholds()` to validate threshold ordering (caution > warning > critical) and prevent misconfiguration that could cause alerts to fire incorrectly
+- **Notification content sanitization**: Added `sanitizeNotificationContent()` to protect against UI abuse from malicious server responses:
+  - Removes control characters (null bytes, bell, etc.)
+  - Strips zero-width and direction override characters used for text spoofing
+  - Truncates overly long strings to prevent notification overflow
+  - Normalizes excessive whitespace
+- **Workspace trust check**: Extension now warns users when running in untrusted workspaces where configuration may come from untrusted sources
+
+### Added
+
+- New security utilities in `security.ts`:
+  - `isValidAlertThresholds()`: Validates threshold configuration ordering and bounds
+  - `sanitizeNotificationContent()`: Sanitizes text for safe notification display
+- Interactive threshold validation in "Configure Alerts" dialog with real-time ordering feedback
+- Comprehensive unit tests for new security functions (21 new test cases)
+
+### Fixed
+
+- `isValidAlertThresholds()` now handles null/undefined input gracefully instead of throwing
+- `sanitizeNotificationContent()` now handles edge cases where maxLength < 4 by enforcing a minimum effective length
+
+### Changed
+
+- Alert threshold configuration now falls back to safe defaults if user-configured values are invalid
+- Notification messages now sanitize model designations before display
+
 ## [1.0.3] - 2025-12-27
 
 ### Security
