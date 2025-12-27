@@ -2,6 +2,9 @@
 
 **Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry.**
 
+<img width="1920" height="1080" alt="Screenshot From 2025-12-27 10-13-07" src="https://github.com/user-attachments/assets/0277052c-a357-40aa-b071-17ca98ba5909" />
+<img width="1920" height="1080" alt="Screenshot From 2025-12-27 10-13-00" src="https://github.com/user-attachments/assets/fa94df9b-7e6b-437e-950e-18f1fd551223" />
+
 AG Telemetry provides real-time monitoring of your AI model quota usage in Antigravity IDE with a space mission-themed interface, including sidebar views, status bar indicators, usage trend tracking, and configurable alerts.
 
 ## Features
