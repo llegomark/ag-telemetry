@@ -5,6 +5,37 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2025-12-28
+
+### Added
+
+- **Quota Pool Grouping**: Visual grouping for AI models that share the same usage quota
+  - Models with identical fuel levels are automatically detected as sharing a quota pool
+  - Sidebar displays pooled models under collapsible "Shared Pool" headers with link icon (🔗)
+  - Enhanced tooltips show "Shares quota with: Model A, Model B" for pooled models
+  - Mission Briefing groups pooled models together with pool-level fuel indicators
+  - Status bar tooltip includes "Pool" column with 🔗 indicator and legend
+- **New type definitions**:
+  - Added `quotaPoolId` field to `FuelSystem` interface for tracking pool membership
+  - Added `QUOTA_POOL` to `TreeItemType` enum for pool header tree items
+- **Unit tests**: Added 11 new test cases for quota pool detection algorithm
+  - Tests for pool assignment, unique fuel levels, multiple pools
+  - Edge cases: empty array, single system, all same level
+  - Floating point precision handling at 6 decimal places
+  - Boundary values (0% and 100% fuel levels)
+
+### Changed
+
+- `FuelViewProvider` now groups models by quota pool before displaying individual systems
+- Pool headers are sorted by fuel level (lowest first) for quick identification of depleted pools
+- Standalone (non-pooled) models appear after pool groups, sorted by priority then fuel level
+
+### Technical Details
+
+- Pool detection uses `.toFixed(6)` precision to reliably group models with matching fuel levels
+- Pool IDs are generated internally (`pool-1`, `pool-2`, etc.) and are stable within a telemetry snapshot
+- Only groups of 2+ models receive pool IDs; unique fuel levels remain unpooled
+
 ## [1.0.7] - 2025-12-27
 
 ### Added

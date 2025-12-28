@@ -16,6 +16,13 @@ import {
 import { escapeMarkdown, sanitizeLabel } from './security';
 
 /**
+ * Pool data for quota pool header items
+ */
+interface PoolData {
+    poolId: string;
+}
+
+/**
  * Tree item representing a telemetry data point
  */
 class TelemetryTreeItem extends vscode.TreeItem {
@@ -23,7 +30,7 @@ class TelemetryTreeItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly itemType: TreeItemType,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly data?: FuelSystem | TelemetryAlert | UplinkStatus
+        public readonly data?: FuelSystem | TelemetryAlert | UplinkStatus | PoolData
     ) {
         super(label, collapsibleState);
     }
@@ -190,6 +197,7 @@ export class SystemsViewProvider implements vscode.TreeDataProvider<TelemetryTre
 /**
  * Fuel Reserves View Provider
  * Displays individual model fuel levels with gauges
+ * Groups models by shared quota pools
  */
 export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<TelemetryTreeItem | undefined>();
@@ -210,9 +218,19 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
 
     getChildren(element?: TelemetryTreeItem): TelemetryTreeItem[] {
         if (!element) {
-            return this.createSystemItems();
+            return this.createTopLevelItems();
         }
 
+        // Pool header: return pool members
+        if (element.itemType === TreeItemType.QUOTA_POOL) {
+            const poolId = (element.data as { poolId: string }).poolId;
+            return this.systems
+                .filter(s => s.quotaPoolId === poolId)
+                .sort((a, b) => a.designation.localeCompare(b.designation))
+                .map(sys => this.createSystemItem(sys));
+        }
+
+        // System item: return details
         const system = element.data as FuelSystem;
         if (system && element.itemType === TreeItemType.FUEL_SYSTEM) {
             return this.createSystemDetails(system);
@@ -221,7 +239,7 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
         return [];
     }
 
-    private createSystemItems(): TelemetryTreeItem[] {
+    private createTopLevelItems(): TelemetryTreeItem[] {
         if (this.systems.length === 0) {
             const empty = new TelemetryTreeItem(
                 'No systems detected',
@@ -232,22 +250,84 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             return [empty];
         }
 
-        // Sort: priority first, then by fuel level ascending
-        const sorted = [...this.systems].sort((a, b) => {
-            const aPriority = this.prioritySystems.includes(a.systemId) ? 0 : 1;
-            const bPriority = this.prioritySystems.includes(b.systemId) ? 0 : 1;
+        const items: TelemetryTreeItem[] = [];
+        const pooledSystems = new Set<string>();
 
-            if (aPriority !== bPriority) return aPriority - bPriority;
-            return a.fuelLevel - b.fuelLevel;
-        });
+        // Group systems by pool
+        const pools = new Map<string, FuelSystem[]>();
+        for (const sys of this.systems) {
+            if (sys.quotaPoolId) {
+                const group = pools.get(sys.quotaPoolId) ?? [];
+                group.push(sys);
+                pools.set(sys.quotaPoolId, group);
+                pooledSystems.add(sys.systemId);
+            }
+        }
 
-        return sorted.map(sys => this.createSystemItem(sys));
+        // Create pool headers (sorted by fuel level)
+        const sortedPools = Array.from(pools.entries())
+            .sort((a, b) => a[1][0].fuelLevel - b[1][0].fuelLevel);
+
+        for (const [poolId, poolSystems] of sortedPools) {
+            items.push(this.createPoolHeader(poolId, poolSystems));
+        }
+
+        // Add non-pooled systems (sorted by priority, then fuel level)
+        const standalone = this.systems
+            .filter(s => !pooledSystems.has(s.systemId))
+            .sort((a, b) => {
+                const aPriority = this.prioritySystems.includes(a.systemId) ? 0 : 1;
+                const bPriority = this.prioritySystems.includes(b.systemId) ? 0 : 1;
+                if (aPriority !== bPriority) return aPriority - bPriority;
+                return a.fuelLevel - b.fuelLevel;
+            });
+
+        for (const sys of standalone) {
+            items.push(this.createSystemItem(sys));
+        }
+
+        return items;
+    }
+
+    private createPoolHeader(poolId: string, systems: FuelSystem[]): TelemetryTreeItem {
+        const percentage = Math.round(systems[0].fuelLevel * 100);
+        const count = systems.length;
+        const gauge = this.renderFuelGauge(systems[0].fuelLevel);
+
+        const item = new TelemetryTreeItem(
+            `Shared Pool (${count} models)`,
+            TreeItemType.QUOTA_POOL,
+            vscode.TreeItemCollapsibleState.Expanded,
+            { poolId }
+        );
+
+        item.description = `${gauge} ${percentage}%`;
+        item.iconPath = new vscode.ThemeIcon(
+            'link',
+            new vscode.ThemeColor(this.getReadinessColor(systems[0].readiness))
+        );
+
+        // Build tooltip with pool members
+        const memberNames = systems
+            .map(s => escapeMarkdown(s.designation))
+            .join(', ');
+
+        item.tooltip = new vscode.MarkdownString(
+            `**Shared Quota Pool**\n\n` +
+            `These ${count} models share the same usage limit:\n\n` +
+            `${memberNames}\n\n` +
+            `Current Level: ${percentage}%\n\n` +
+            `_Using any model in this pool depletes the shared quota_`
+        );
+
+        return item;
     }
 
     private createSystemItem(system: FuelSystem): TelemetryTreeItem {
         const percentage = Math.round(system.fuelLevel * 100);
         const gauge = this.renderFuelGauge(system.fuelLevel);
         const isPriority = this.prioritySystems.includes(system.systemId);
+        const isPooled = !!system.quotaPoolId;
 
         // Sanitize server-derived designation to prevent control char/codicon injection
         const safeDesignation = sanitizeLabel(system.designation);
@@ -262,7 +342,8 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             system
         );
 
-        item.description = `${gauge} ${percentage}%`;
+        // Don't show gauge for pooled systems (shown in header)
+        item.description = isPooled ? '' : `${gauge} ${percentage}%`;
         item.iconPath = new vscode.ThemeIcon(
             this.getSystemClassIcon(system.systemClass),
             new vscode.ThemeColor(this.getReadinessColor(system.readiness))
@@ -270,12 +351,25 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
 
         // Escape server-derived content to prevent markdown injection in tooltip
         const escapedDesignation = escapeMarkdown(system.designation);
-        item.tooltip = new vscode.MarkdownString(
-            `**${escapedDesignation}**\n\n` +
+
+        // Build tooltip with pool info
+        let tooltipText = `**${escapedDesignation}**\n\n` +
             `Fuel Level: ${percentage}%\n\n` +
             `Status: ${system.readiness}\n\n` +
-            `Class: ${this.getSystemClassName(system.systemClass)}`
-        );
+            `Class: ${this.getSystemClassName(system.systemClass)}`;
+
+        if (isPooled) {
+            // Find pool siblings
+            const siblings = this.systems
+                .filter(s => s.quotaPoolId === system.quotaPoolId && s.systemId !== system.systemId)
+                .map(s => escapeMarkdown(s.designation));
+
+            if (siblings.length > 0) {
+                tooltipText += `\n\n---\n\n$(link) **Shares quota with:**\n${siblings.join(', ')}`;
+            }
+        }
+
+        item.tooltip = new vscode.MarkdownString(tooltipText);
 
         return item;
     }

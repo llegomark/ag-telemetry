@@ -308,9 +308,9 @@ export class FlightDeck {
         const statusEmoji = this.getStatusEmoji(snapshot.overallReadiness);
         md.appendMarkdown(`**Fleet Readiness:** ${statusEmoji} ${snapshot.overallReadiness}\n\n`);
 
-        // System table
-        md.appendMarkdown('| System | Fuel | Status |\n');
-        md.appendMarkdown('|--------|------|--------|\n');
+        // System table with pool column
+        md.appendMarkdown('| System | Fuel | Status | Pool |\n');
+        md.appendMarkdown('|--------|------|--------|------|\n');
 
         const sorted = [...snapshot.systems].sort((a, b) => a.fuelLevel - b.fuelLevel);
 
@@ -320,11 +320,19 @@ export class FlightDeck {
             const status = this.getStatusEmoji(sys.readiness);
             // Escape server-derived designation to prevent markdown injection
             const safeDesignation = escapeMarkdown(sys.designation);
-            md.appendMarkdown(`| ${safeDesignation} | ${bar} ${pct}% | ${status} |\n`);
+            // Show pool indicator
+            const poolIndicator = sys.quotaPoolId ? '🔗' : '—';
+            md.appendMarkdown(`| ${safeDesignation} | ${bar} ${pct}% | ${status} | ${poolIndicator} |\n`);
         }
 
         if (sorted.length > 6) {
             md.appendMarkdown(`\n_+${sorted.length - 6} more systems_\n`);
+        }
+
+        // Add pool legend
+        const hasPooledSystems = snapshot.systems.some(s => s.quotaPoolId);
+        if (hasPooledSystems) {
+            md.appendMarkdown('\n_🔗 = Shares quota with other models_\n');
         }
 
         md.appendMarkdown('\n---\n');

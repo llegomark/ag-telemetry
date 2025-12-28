@@ -28,6 +28,8 @@ export interface FuelSystem {
     systemClass: SystemClass;
     /** Whether system is currently active */
     isOnline: boolean;
+    /** Quota pool identifier (shared among models with same quota) */
+    quotaPoolId?: string;
 }
 
 /** Classification of AI model systems */
@@ -138,5 +140,6 @@ export enum TreeItemType {
     REPLENISH_TIMER = 'replenish-timer',
     ALERT_ITEM = 'alert-item',
     INFO_ITEM = 'info-item',
-    UPLINK_STATUS = 'uplink-status'
+    UPLINK_STATUS = 'uplink-status',
+    QUOTA_POOL = 'quota-pool'
 }

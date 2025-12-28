@@ -728,6 +728,193 @@ describe('TelemetryService Logic', () => {
         });
     });
 
+    describe('assignQuotaPoolIds', () => {
+        interface MinimalFuelSystem {
+            systemId: string;
+            fuelLevel: number;
+            quotaPoolId?: string;
+        }
+
+        // Simulating the assignQuotaPoolIds logic
+        function assignQuotaPoolIds(systems: MinimalFuelSystem[]): void {
+            // Group systems by fuel level (use fixed precision to avoid float issues)
+            const poolGroups = new Map<string, MinimalFuelSystem[]>();
+
+            for (const system of systems) {
+                const key = system.fuelLevel.toFixed(6);
+                const group = poolGroups.get(key) ?? [];
+                group.push(system);
+                poolGroups.set(key, group);
+            }
+
+            // Assign pool IDs only to groups with 2+ models (shared quota)
+            let poolIndex = 1;
+            for (const [, group] of poolGroups) {
+                if (group.length >= 2) {
+                    const poolId = `pool-${poolIndex}`;
+                    for (const system of group) {
+                        system.quotaPoolId = poolId;
+                    }
+                    poolIndex++;
+                }
+            }
+        }
+
+        it('should assign same pool ID to models with identical fuel levels', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'claude-sonnet', fuelLevel: 0.875 },
+                { systemId: 'claude-opus', fuelLevel: 0.875 },
+                { systemId: 'gemini-pro', fuelLevel: 1.0 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            expect(systems[0].quotaPoolId).to.equal('pool-1');
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+            expect(systems[2].quotaPoolId).to.be.undefined;
+        });
+
+        it('should not assign pool ID to systems with unique fuel levels', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'model-a', fuelLevel: 0.5 },
+                { systemId: 'model-b', fuelLevel: 0.6 },
+                { systemId: 'model-c', fuelLevel: 0.7 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            expect(systems[0].quotaPoolId).to.be.undefined;
+            expect(systems[1].quotaPoolId).to.be.undefined;
+            expect(systems[2].quotaPoolId).to.be.undefined;
+        });
+
+        it('should create multiple pools for different shared fuel levels', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'pool1-a', fuelLevel: 0.5 },
+                { systemId: 'pool1-b', fuelLevel: 0.5 },
+                { systemId: 'pool2-a', fuelLevel: 0.8 },
+                { systemId: 'pool2-b', fuelLevel: 0.8 },
+                { systemId: 'unique', fuelLevel: 0.9 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            // First pool (0.5)
+            expect(systems[0].quotaPoolId).to.equal('pool-1');
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+            // Second pool (0.8)
+            expect(systems[2].quotaPoolId).to.equal('pool-2');
+            expect(systems[3].quotaPoolId).to.equal('pool-2');
+            // Unique (no pool)
+            expect(systems[4].quotaPoolId).to.be.undefined;
+        });
+
+        it('should handle empty systems array', () => {
+            const systems: MinimalFuelSystem[] = [];
+            assignQuotaPoolIds(systems);
+            expect(systems).to.be.empty;
+        });
+
+        it('should handle single system (no pool possible)', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'only-one', fuelLevel: 0.5 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            expect(systems[0].quotaPoolId).to.be.undefined;
+        });
+
+        it('should assign all systems to one pool when all have same fuel level', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'model-a', fuelLevel: 0.75 },
+                { systemId: 'model-b', fuelLevel: 0.75 },
+                { systemId: 'model-c', fuelLevel: 0.75 },
+                { systemId: 'model-d', fuelLevel: 0.75 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            expect(systems[0].quotaPoolId).to.equal('pool-1');
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+            expect(systems[2].quotaPoolId).to.equal('pool-1');
+            expect(systems[3].quotaPoolId).to.equal('pool-1');
+        });
+
+        it('should use fixed precision to handle floating point comparison', () => {
+            // These values are different at high precision but should be treated as same pool
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'model-a', fuelLevel: 0.8750001 },
+                { systemId: 'model-b', fuelLevel: 0.8750002 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            // With .toFixed(6), both become "0.875000" so they should share a pool
+            expect(systems[0].quotaPoolId).to.equal('pool-1');
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+        });
+
+        it('should distinguish values that differ at 6 decimal precision', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'model-a', fuelLevel: 0.875001 },
+                { systemId: 'model-b', fuelLevel: 0.875002 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            // These differ at the 6th decimal place, so no pool
+            expect(systems[0].quotaPoolId).to.be.undefined;
+            expect(systems[1].quotaPoolId).to.be.undefined;
+        });
+
+        it('should handle edge case with exactly 2 systems sharing fuel level', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'model-a', fuelLevel: 0.5 },
+                { systemId: 'model-b', fuelLevel: 0.5 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            expect(systems[0].quotaPoolId).to.equal('pool-1');
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+        });
+
+        it('should handle fuel levels at boundaries (0 and 1)', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'empty-a', fuelLevel: 0 },
+                { systemId: 'empty-b', fuelLevel: 0 },
+                { systemId: 'full-a', fuelLevel: 1 },
+                { systemId: 'full-b', fuelLevel: 1 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            expect(systems[0].quotaPoolId).to.equal('pool-1');
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+            expect(systems[2].quotaPoolId).to.equal('pool-2');
+            expect(systems[3].quotaPoolId).to.equal('pool-2');
+        });
+
+        it('should handle mixed pooled and unpooled systems', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'unique-1', fuelLevel: 0.1 },
+                { systemId: 'pooled-a', fuelLevel: 0.5 },
+                { systemId: 'unique-2', fuelLevel: 0.6 },
+                { systemId: 'pooled-b', fuelLevel: 0.5 },
+                { systemId: 'unique-3', fuelLevel: 0.9 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            expect(systems[0].quotaPoolId).to.be.undefined;
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+            expect(systems[2].quotaPoolId).to.be.undefined;
+            expect(systems[3].quotaPoolId).to.equal('pool-1');
+            expect(systems[4].quotaPoolId).to.be.undefined;
+        });
+    });
+
     describe('trackFailure', () => {
         // Simulating the failure tracking logic
         const FAILURE_THRESHOLD = 3;

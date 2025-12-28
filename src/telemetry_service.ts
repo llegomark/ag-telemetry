@@ -67,7 +67,7 @@ export class TelemetryService {
     private static readonly MAX_LABEL_LENGTH = 128;
     private static readonly MAX_SYSTEM_ID_LENGTH = 256;
 
-    constructor(private thresholds: AlertThresholds) {}
+    constructor(private thresholds: AlertThresholds) { }
 
     /**
      * Subscribe to telemetry events
@@ -528,6 +528,7 @@ export class TelemetryService {
     /**
      * Process raw telemetry into FuelSystem array
      * Validates and sanitizes server response fields to prevent DoS/rendering issues
+     * Detects and assigns quota pool IDs to models sharing the same quota
      */
     private processTelemetryData(raw: ServerTelemetryResponse): FuelSystem[] {
         const configs = raw.userStatus?.cascadeModelConfigData?.clientModelConfigs ?? [];
@@ -589,7 +590,38 @@ export class TelemetryService {
             systems.push(system);
         }
 
+        // Detect quota pools: group models by identical fuel levels
+        this.assignQuotaPoolIds(systems);
+
         return systems.sort((a, b) => a.fuelLevel - b.fuelLevel);
+    }
+
+    /**
+     * Assign quota pool IDs to models sharing the same fuel level
+     * Models with unique fuel levels get no pool ID
+     */
+    private assignQuotaPoolIds(systems: FuelSystem[]): void {
+        // Group systems by fuel level (use fixed precision to avoid float issues)
+        const poolGroups = new Map<string, FuelSystem[]>();
+
+        for (const system of systems) {
+            const key = system.fuelLevel.toFixed(6);
+            const group = poolGroups.get(key) ?? [];
+            group.push(system);
+            poolGroups.set(key, group);
+        }
+
+        // Assign pool IDs only to groups with 2+ models (shared quota)
+        let poolIndex = 1;
+        for (const [, group] of poolGroups) {
+            if (group.length >= 2) {
+                const poolId = `pool-${poolIndex}`;
+                for (const system of group) {
+                    system.quotaPoolId = poolId;
+                }
+                poolIndex++;
+            }
+        }
     }
 
     /**

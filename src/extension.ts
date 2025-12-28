@@ -158,8 +158,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // This works around an issue where the container icon disappears on IDE restart
     setTimeout(() => {
         vscode.commands.executeCommand('agTelemetrySystemsView.focus').then(
-            () => {},
-            () => {} // Ignore errors if view is already focused or command fails
+            () => { },
+            () => { } // Ignore errors if view is already focused or command fails
         );
     }, 100);
 
@@ -393,14 +393,60 @@ async function showMissionBriefing(): Promise<void> {
         kind: vscode.QuickPickItemKind.Separator
     });
 
-    // Sort systems by fuel level
-    const sorted = [...snapshot.systems].sort((a, b) => a.fuelLevel - b.fuelLevel);
+    // Group systems by quota pool
+    const pools = new Map<string, FuelSystem[]>();
+    const standalone: FuelSystem[] = [];
 
-    for (const sys of sorted) {
+    for (const sys of snapshot.systems) {
+        if (sys.quotaPoolId) {
+            const group = pools.get(sys.quotaPoolId) ?? [];
+            group.push(sys);
+            pools.set(sys.quotaPoolId, group);
+        } else {
+            standalone.push(sys);
+        }
+    }
+
+    // Sort pools by fuel level
+    const sortedPools = Array.from(pools.entries())
+        .sort((a, b) => a[1][0].fuelLevel - b[1][0].fuelLevel);
+
+    // Add pooled systems with headers
+    for (const [, poolSystems] of sortedPools) {
+        const pct = Math.round(poolSystems[0].fuelLevel * 100);
+        const gauge = renderQuickGauge(poolSystems[0].fuelLevel);
+
+        // Pool header
+        items.push({
+            label: `$(link) Shared Pool (${poolSystems.length} models) ${gauge} ${pct}%`,
+            kind: vscode.QuickPickItemKind.Separator
+        });
+
+        // Pool members
+        for (const sys of poolSystems.sort((a, b) => a.designation.localeCompare(b.designation))) {
+            const trend = historyTracker.generateTrendSummary(sys.systemId);
+            const safeDesignation = sanitizeLabel(sys.designation);
+
+            items.push({
+                label: `  ${getSystemIcon(sys)} ${safeDesignation}`,
+                description: trend !== '?' ? `Trend: ${trend}` : undefined,
+                detail: 'Shares quota with other models in this pool'
+            });
+        }
+    }
+
+    // Add standalone systems
+    if (standalone.length > 0 && pools.size > 0) {
+        items.push({
+            label: 'Individual Models',
+            kind: vscode.QuickPickItemKind.Separator
+        });
+    }
+
+    for (const sys of standalone.sort((a, b) => a.fuelLevel - b.fuelLevel)) {
         const pct = Math.round(sys.fuelLevel * 100);
         const gauge = renderQuickGauge(sys.fuelLevel);
         const trend = historyTracker.generateTrendSummary(sys.systemId);
-        // Sanitize server-derived designation for QuickPick labels
         const safeDesignation = sanitizeLabel(sys.designation);
 
         items.push({

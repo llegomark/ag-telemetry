@@ -2,7 +2,7 @@
   "name": "ag-telemetry",
   "displayName": "AG Telemetry",
   "description": "Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "publisher": "llegomark",
   "license": "MIT",
   "repository": {
