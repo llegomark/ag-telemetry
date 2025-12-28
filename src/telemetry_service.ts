@@ -58,6 +58,9 @@ export class TelemetryService {
     /** Consecutive failure count for user feedback */
     private consecutiveFailures: number = 0;
 
+    /** Lock to prevent concurrent uplink establishment attempts */
+    private isEstablishingUplink: boolean = false;
+
     /** Threshold for showing user feedback about failures */
     private static readonly FAILURE_THRESHOLD = 3;
     private static readonly MAX_SCAN_PORTS = 32;
@@ -126,8 +129,15 @@ export class TelemetryService {
 
     /**
      * Establish uplink connection to Antigravity systems
+     * Protected against concurrent calls to prevent race conditions
      */
     async establishUplink(): Promise<boolean> {
+        // Prevent concurrent uplink attempts (e.g., rapid button clicks)
+        if (this.isEstablishingUplink) {
+            return false;
+        }
+
+        this.isEstablishingUplink = true;
         this.emit('scan-started');
 
         try {
@@ -160,6 +170,8 @@ export class TelemetryService {
         } catch (err) {
             this.emit('error', err);
             return false;
+        } finally {
+            this.isEstablishingUplink = false;
         }
     }
 
@@ -599,12 +611,22 @@ export class TelemetryService {
     /**
      * Assign quota pool IDs to models sharing the same fuel level
      * Models with unique fuel levels get no pool ID
+     *
+     * Note: Models at exactly 100% fuel are excluded from pool detection
+     * because fresh/unused quotas cannot be reliably distinguished from
+     * separate quotas that happen to all be full.
      */
     private assignQuotaPoolIds(systems: FuelSystem[]): void {
         // Group systems by fuel level (use fixed precision to avoid float issues)
+        // Skip models at 100% - can't distinguish shared vs separate unused quotas
         const poolGroups = new Map<string, FuelSystem[]>();
 
         for (const system of systems) {
+            // Skip 100% fuel levels to avoid false positives with fresh quotas
+            if (system.fuelLevel >= 1.0) {
+                continue;
+            }
+
             const key = system.fuelLevel.toFixed(6);
             const group = poolGroups.get(key) ?? [];
             group.push(system);

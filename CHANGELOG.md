@@ -5,6 +5,32 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2025-12-28
+
+### Fixed
+
+- **False positive pool detection**: Models at exactly 100% fuel are now excluded from quota pool grouping to prevent incorrectly grouping models with separate quotas (e.g., Gemini Pro High, Gemini Pro Low, Gemini Flash all at 100% would no longer be grouped as a shared pool)
+
+### Security
+
+- **Concurrency protection in TelemetryService**: Added `isEstablishingUplink` lock to `establishUplink()` to prevent race conditions from rapid button clicks or multiple command triggers
+  - Multiple concurrent process discovery scans could cause overlapping shell commands
+  - Lock prevents new scans from starting if one is already in progress
+  - Uses `try/finally` pattern to ensure lock is always released
+
+### Added
+
+- **Unit tests**: Added 2 additional test cases for 100% fuel exclusion
+  - `should skip models at 100% fuel to avoid false positives`
+  - `should group models just below 100% but not at 100%`
+
+### Technical Details
+
+- Pool detection now skips models where `fuelLevel >= 1.0`
+- Once any usage occurs (fuel drops below 100%), shared pools are correctly detected
+- 0% fuel models are still grouped (depleted together indicates shared quota)
+- `establishUplink()` now returns `false` immediately if called while already in progress
+
 ## [1.0.8] - 2025-12-28
 
 ### Added

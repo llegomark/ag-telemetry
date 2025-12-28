@@ -738,9 +738,15 @@ describe('TelemetryService Logic', () => {
         // Simulating the assignQuotaPoolIds logic
         function assignQuotaPoolIds(systems: MinimalFuelSystem[]): void {
             // Group systems by fuel level (use fixed precision to avoid float issues)
+            // Skip models at 100% - can't distinguish shared vs separate unused quotas
             const poolGroups = new Map<string, MinimalFuelSystem[]>();
 
             for (const system of systems) {
+                // Skip 100% fuel levels to avoid false positives with fresh quotas
+                if (system.fuelLevel >= 1.0) {
+                    continue;
+                }
+
                 const key = system.fuelLevel.toFixed(6);
                 const group = poolGroups.get(key) ?? [];
                 group.push(system);
@@ -764,13 +770,28 @@ describe('TelemetryService Logic', () => {
             const systems: MinimalFuelSystem[] = [
                 { systemId: 'claude-sonnet', fuelLevel: 0.875 },
                 { systemId: 'claude-opus', fuelLevel: 0.875 },
-                { systemId: 'gemini-pro', fuelLevel: 1.0 }
+                { systemId: 'gemini-pro', fuelLevel: 0.9 }
             ];
 
             assignQuotaPoolIds(systems);
 
             expect(systems[0].quotaPoolId).to.equal('pool-1');
             expect(systems[1].quotaPoolId).to.equal('pool-1');
+            expect(systems[2].quotaPoolId).to.be.undefined;
+        });
+
+        it('should skip models at 100% fuel to avoid false positives', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'gemini-pro-high', fuelLevel: 1.0 },
+                { systemId: 'gemini-pro-low', fuelLevel: 1.0 },
+                { systemId: 'gemini-flash', fuelLevel: 1.0 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            // All at 100% should NOT be grouped (could be separate quotas)
+            expect(systems[0].quotaPoolId).to.be.undefined;
+            expect(systems[1].quotaPoolId).to.be.undefined;
             expect(systems[2].quotaPoolId).to.be.undefined;
         });
 
@@ -890,10 +911,30 @@ describe('TelemetryService Logic', () => {
 
             assignQuotaPoolIds(systems);
 
+            // 0% fuel models should be grouped (depleted together = shared quota)
             expect(systems[0].quotaPoolId).to.equal('pool-1');
             expect(systems[1].quotaPoolId).to.equal('pool-1');
-            expect(systems[2].quotaPoolId).to.equal('pool-2');
-            expect(systems[3].quotaPoolId).to.equal('pool-2');
+            // 100% fuel models should NOT be grouped (can't distinguish fresh quotas)
+            expect(systems[2].quotaPoolId).to.be.undefined;
+            expect(systems[3].quotaPoolId).to.be.undefined;
+        });
+
+        it('should group models just below 100% but not at 100%', () => {
+            const systems: MinimalFuelSystem[] = [
+                { systemId: 'almost-full-a', fuelLevel: 0.999999 },
+                { systemId: 'almost-full-b', fuelLevel: 0.999999 },
+                { systemId: 'full-a', fuelLevel: 1.0 },
+                { systemId: 'full-b', fuelLevel: 1.0 }
+            ];
+
+            assignQuotaPoolIds(systems);
+
+            // Just below 100% should be grouped (usage detected = shared quota)
+            expect(systems[0].quotaPoolId).to.equal('pool-1');
+            expect(systems[1].quotaPoolId).to.equal('pool-1');
+            // Exactly 100% should NOT be grouped
+            expect(systems[2].quotaPoolId).to.be.undefined;
+            expect(systems[3].quotaPoolId).to.be.undefined;
         });
 
         it('should handle mixed pooled and unpooled systems', () => {
