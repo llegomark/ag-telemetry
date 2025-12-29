@@ -1,8 +1,8 @@
-# AG Telemetry
+# Antigravity AI Quota & Usage Tracker
 
-**Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry.**
+**Track and monitor your Antigravity AI model quota usage, remaining limits, and usage trends in real-time.**
 
-AG Telemetry provides real-time monitoring of your AI model quota usage in Antigravity IDE with a space mission-themed interface, including sidebar views, status bar indicators, usage trend tracking, and configurable alerts.
+Antigravity AI Quota & Usage Tracker provides real-time monitoring of your AI model quota usage in Antigravity IDE with a space mission-themed interface, including sidebar views, status bar indicators, usage trend tracking, and configurable alerts.
 
 ## Features
 
@@ -58,7 +58,7 @@ Three-tier threshold system with VS Code notifications:
 
 ## Supported Models
 
-AG Telemetry automatically detects and monitors all AI models available in your Antigravity installation:
+Antigravity AI Quota & Usage Tracker automatically detects and monitors all AI models available in your Antigravity installation:
 
 - Gemini 3 Pro (High/Low)
 - Gemini 3 Flash
@@ -78,7 +78,7 @@ AG Telemetry automatically detects and monitors all AI models available in your 
 
 1. Open Antigravity IDE
 2. Go to the Extensions view (`Ctrl+Shift+X`)
-3. Search for **"AG Telemetry"**
+3. Search for **"Antigravity AI Quota & Usage Tracker"**
 4. Click **Install**
 
 The extension is available on the [Open VSX Registry](https://open-vsx.org/extension/llegomark/ag-telemetry).

@@ -5,6 +5,14 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] - 2025-12-29
+
+### Changed
+
+- **Rebranding**: Extension renamed from "AG Telemetry" to "Antigravity AI Quota & Usage Tracker" for better discoverability on Open VSX Registry
+- **Description**: Updated extension description to "Track and monitor your Antigravity AI model quota usage, remaining limits, and usage trends in real-time"
+- **README updates**: All references to "AG Telemetry" updated to use new extension name
+
 ## [1.0.9] - 2025-12-28
 
 ### Fixed

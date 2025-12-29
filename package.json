@@ -1,8 +1,8 @@
 {
   "name": "ag-telemetry",
-  "displayName": "AG Telemetry",
-  "description": "Mission control dashboard for monitoring Antigravity AI model fuel levels and system telemetry",
-  "version": "1.0.9",
+  "displayName": "Antigravity AI Quota & Usage Tracker",
+  "description": "Track and monitor your Antigravity AI model quota usage, remaining limits, and usage trends in real-time",
+  "version": "1.0.10",
   "publisher": "llegomark",
   "license": "MIT",
   "repository": {
