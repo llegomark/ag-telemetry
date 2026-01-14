@@ -5,6 +5,22 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11] - 2026-01-14
+
+### Changed
+
+- **Silent Mode**: Extension now operates silently without interrupting user workflow
+  - Removed automatic sidebar focus on startup - view container icon remains accessible without forcing focus
+  - Converted all informational popup notifications to brief status bar messages
+  - Untrusted workspace warning now displays as status bar message (5s) instead of modal popup
+  - Connection status messages (success/waiting) now use status bar (3s-5s)
+  - Settings change confirmations now use status bar (3s)
+  - Diagnostics completion now shows status bar message with optional quick pick for actions
+
+### Unchanged
+
+- **Important alerts preserved**: Low fuel warnings and consecutive API failure notifications remain as popup notifications since they require user attention
+
 ## [1.0.10] - 2025-12-29
 
 ### Changed

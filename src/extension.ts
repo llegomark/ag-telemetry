@@ -112,9 +112,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // In untrusted workspaces, we still activate but warn the user
     // since the extension primarily reads from a local trusted process
     if (!vscode.workspace.isTrusted) {
-        vscode.window.showWarningMessage(
-            'AG Telemetry: Running in untrusted workspace. ' +
-            'Some configuration options from workspace settings may be ignored.'
+        // Silent warning via status bar instead of popup
+        vscode.window.setStatusBarMessage(
+            '$(shield) AG Telemetry: Untrusted workspace - some settings may be ignored',
+            5000
         );
     }
 
@@ -154,14 +155,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     fuelProvider.refresh([], []);
     alertsProvider.refresh([]);
 
-    // Force the view container to be visible by focusing it briefly
-    // This works around an issue where the container icon disappears on IDE restart
-    setTimeout(() => {
-        vscode.commands.executeCommand('agTelemetrySystemsView.focus').then(
-            () => { },
-            () => { } // Ignore errors if view is already focused or command fails
-        );
-    }, 100);
+    // Silent mode: Don't force-focus the sidebar on startup
+    // The view container icon will still be visible in the activity bar
 
     // Subscribe to telemetry events
     const unsubscribe = telemetryService.subscribe(event => {
@@ -240,19 +235,12 @@ async function initializeWithRetry(attempts: number = 3, showNotification: boole
     flightDeck.showDisconnected();
     systemsProvider.refresh(undefined, telemetryService.getUplinkStatus());
 
-    // Show user-friendly error notification with actionable guidance
+    // Silent mode: Show connection status in status bar instead of popup
     if (showNotification) {
-        const action = await vscode.window.showWarningMessage(
-            'AG Telemetry: Could not connect to Antigravity. Is it running?',
-            'Retry Connection',
-            'Open Settings'
+        vscode.window.setStatusBarMessage(
+            '$(warning) AG Telemetry: Waiting for Antigravity connection...',
+            5000
         );
-
-        if (action === 'Retry Connection') {
-            vscode.commands.executeCommand('agTelemetry.establishLink');
-        } else if (action === 'Open Settings') {
-            vscode.commands.executeCommand('workbench.action.openSettings', 'agTelemetry');
-        }
     }
 }
 
@@ -346,11 +334,12 @@ function registerCommands(context: vscode.ExtensionContext): void {
                 await initializeWithRetry(3, false);
             });
 
-            // Check connection status and notify user
+            // Check connection status and notify user (silent mode: status bar for success)
             const uplink = telemetryService.getUplinkStatus();
             if (uplink.isConnected) {
-                vscode.window.showInformationMessage('AG Telemetry: Uplink established successfully');
+                vscode.window.setStatusBarMessage('$(check) AG Telemetry: Uplink established', 3000);
             } else {
+                // Keep error message as popup since user explicitly requested connection
                 vscode.window.showErrorMessage(
                     'AG Telemetry: Failed to establish uplink. Ensure Antigravity is running.'
                 );
@@ -530,8 +519,9 @@ async function showAlertConfiguration(): Promise<void> {
         await vscode.workspace.getConfiguration('agTelemetry')
             .update('enableNotifications', newValue, vscode.ConfigurationTarget.Global);
 
-        vscode.window.showInformationMessage(
-            `AG Telemetry: Notifications ${newValue ? 'enabled' : 'disabled'}`
+        vscode.window.setStatusBarMessage(
+            `$(bell) AG Telemetry: Notifications ${newValue ? 'enabled' : 'disabled'}`,
+            3000
         );
     } else if (selected.label.includes('Caution')) {
         await updateThreshold('caution', config.alertThresholds);
@@ -575,8 +565,9 @@ async function updateThreshold(
         await vscode.workspace.getConfiguration('agTelemetry')
             .update('alertThresholds', newThresholds, vscode.ConfigurationTarget.Global);
 
-        vscode.window.showInformationMessage(
-            `AG Telemetry: ${level} threshold set to ${input}%`
+        vscode.window.setStatusBarMessage(
+            `$(check) AG Telemetry: ${level} threshold set to ${input}%`,
+            3000
         );
     }
 }
@@ -785,12 +776,13 @@ async function runDiagnostics(): Promise<void> {
     output.appendLine('To report issues: https://github.com/llegomark/ag-telemetry/issues');
     output.appendLine('───────────────────────────────────────────────────────');
 
-    // Offer actions
-    const action = await vscode.window.showInformationMessage(
-        'AG Telemetry: Diagnostics complete. View the output panel for details.',
-        'Retry Connection',
-        'Report Issue',
-        'Close'
+    // Silent mode: Show status bar message, user already sees output panel
+    vscode.window.setStatusBarMessage('$(check) AG Telemetry: Diagnostics complete', 5000);
+
+    // Still show actions but in a less intrusive way (quick pick instead of modal)
+    const action = await vscode.window.showQuickPick(
+        ['Retry Connection', 'Report Issue', 'Close'],
+        { placeHolder: 'Diagnostics complete - select an action (optional)' }
     );
 
     if (action === 'Retry Connection') {

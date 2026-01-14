@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run compile:*)",
+      "Bash(npm run package:*)",
+      "Bash(npx vsce:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run test:unit:*)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:code.visualstudio.com)"
+    ]
+  }
+}
