@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Critical: Exhausted models no longer hidden**: Models with fully consumed quota now remain visible in the UI instead of disappearing entirely
   - Root cause: `processTelemetryData` was skipping models without `quotaInfo` or with missing `remainingFraction`
   - Models without quota info are now treated as exhausted (0% fuel level) and displayed with prominent styling
-  - Tree view shows warning icon (⚠️) and "EXHAUSTED • Resets: Xh Ym" for exhausted models  
+  - Tree view shows warning icon and "EXHAUSTED • Resets: Xh Ym" for exhausted models  
   - Status bar shows warning styling when Claude Opus quota is exhausted
   - Tooltips prominently display reset time countdown for exhausted models
+
+- **Status bar now shows accurate average quota**: Previously showed only the most critical model (e.g., "CS:0%"), now shows average across all models
+  - Mixed states show available count: "AGT 43% (3/7)" means 43% average with 3 of 7 models available
+  - Tooltip now includes summary: "Models: 3 available, 4 exhausted"
 
 ### Changed
 

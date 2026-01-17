@@ -10,7 +10,7 @@ import {
     ReadinessLevel,
     UplinkStatus
 } from './types';
-import { escapeMarkdown, sanitizeLabel } from './security';
+import { escapeMarkdown } from './security';
 
 /**
  * Flight Deck - Mission control status bar display
@@ -88,23 +88,25 @@ export class FlightDeck {
     }
 
     /**
-     * Render compact mode - status + lowest system or average
+     * Render compact mode - always show average fuel across all models
+     * This gives an accurate overall fleet health representation
      */
     private renderCompact(snapshot: TelemetrySnapshot): void {
         const icon = this.getReadinessIcon(snapshot.overallReadiness);
-
-        // Find the most critical system
-        const critical = this.findMostCritical(snapshot.systems);
         const avgFuel = this.calculateAverageFuel(snapshot.systems);
+        const avgPct = Math.round(avgFuel * 100);
+
+        // Count available vs exhausted models for context
+        const exhaustedCount = snapshot.systems.filter(s => s.fuelLevel === 0).length;
+        const availableCount = snapshot.systems.length - exhaustedCount;
 
         let text: string;
-        if (critical && critical.fuelLevel < 0.3) {
-            const pct = Math.round(critical.fuelLevel * 100);
-            const safeDesignation = sanitizeLabel(critical.designation, 32);
-            const abbr = this.abbreviateSystem(safeDesignation);
-            text = `${icon} AGT ${abbr}:${pct}%`;
+        if (exhaustedCount > 0 && availableCount > 0) {
+            // Mixed state: show average with available count
+            text = `${icon} AGT ${avgPct}% (${availableCount}/${snapshot.systems.length})`;
         } else {
-            text = `${icon} AGT ${Math.round(avgFuel * 100)}%`;
+            // All available or all exhausted: just show average
+            text = `${icon} AGT ${avgPct}%`;
         }
 
         this.statusItem.text = text;
@@ -201,9 +203,20 @@ export class FlightDeck {
 
         md.appendMarkdown('## AG Telemetry - Quota Status\n\n');
 
-        // Overall status
+        // Overall status with availability summary
         const statusEmoji = this.getStatusEmoji(snapshot.overallReadiness);
+        const exhaustedCount = snapshot.systems.filter(s => s.fuelLevel === 0).length;
+        const availableCount = snapshot.systems.length - exhaustedCount;
+        const avgFuel = this.calculateAverageFuel(snapshot.systems);
+
         md.appendMarkdown(`**Status:** ${statusEmoji} ${snapshot.overallReadiness}\n\n`);
+        md.appendMarkdown(`**Average Quota:** ${Math.round(avgFuel * 100)}%\n\n`);
+
+        if (exhaustedCount > 0) {
+            md.appendMarkdown(`**Models:** ${availableCount} available, ${exhaustedCount} exhausted\n\n`);
+        } else {
+            md.appendMarkdown(`**Models:** ${snapshot.systems.length} available\n\n`);
+        }
 
         // System table with pool column
         md.appendMarkdown('| Model | Quota | Pool |\n');
