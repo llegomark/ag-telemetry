@@ -280,6 +280,37 @@ export class FlightDeck {
     }
 
     /**
+     * Format remaining time until reset
+     */
+    private formatTimeUntilReset(resetTime: string | undefined): string {
+        if (!resetTime) {
+            return 'Reset time unknown';
+        }
+
+        const resetDate = new Date(resetTime);
+        const now = new Date();
+        const diffMs = resetDate.getTime() - now.getTime();
+
+        if (diffMs <= 0) {
+            return 'Resetting soon...';
+        }
+
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffDays > 0) {
+            const remainingHours = diffHours % 24;
+            return `Resets in ${diffDays}d ${remainingHours}h`;
+        } else if (diffHours > 0) {
+            const remainingMins = diffMins % 60;
+            return `Resets in ${diffHours}h ${remainingMins}m`;
+        } else {
+            return `Resets in ${diffMins}m`;
+        }
+    }
+
+    /**
      * Render Claude Opus status in dedicated status bar item
      */
     private renderOpusStatus(snapshot: TelemetrySnapshot): void {
@@ -293,7 +324,7 @@ export class FlightDeck {
         const pct = Math.round(opus.fuelLevel * 100);
 
         this.opusItem.text = `Claude Opus 4.5 (Thinking): ${pct}%`;
-        this.opusItem.tooltip = `Remaining usage: ${pct}%`;
+        this.opusItem.tooltip = this.formatTimeUntilReset(opus.replenishmentEta);
         this.opusItem.backgroundColor = undefined;
         this.opusItem.show();
     }

@@ -5,6 +5,15 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-01-17
+
+### Changed
+
+- **Claude Opus tooltip**: Hovering over the Claude Opus 4.5 (Thinking) status bar item now shows the remaining time until quota reset instead of the remaining usage percentage
+  - Displays in human-readable format: "Resets in Xd Yh", "Resets in Xh Ym", or "Resets in Xm"
+  - Shows "Resetting soon..." when reset is imminent
+  - Shows "Reset time unknown" if reset time is unavailable
+
 ## [2.0.0] - 2026-01-17
 
 ### ⚠️ BREAKING CHANGES
