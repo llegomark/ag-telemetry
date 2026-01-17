@@ -1,6 +1,6 @@
 /**
  * AG Telemetry - Flight Deck Status Bar
- * Unique cockpit-style status bar display
+ * Simplified cockpit-style status bar display
  */
 
 import * as vscode from 'vscode';
@@ -12,21 +12,16 @@ import {
 } from './types';
 import { escapeMarkdown, sanitizeLabel } from './security';
 
-type FlightDeckMode = 'compact' | 'detailed' | 'minimal';
-
 /**
  * Flight Deck - Mission control status bar display
+ * Simplified version with single compact mode
  */
 export class FlightDeck {
     private statusItem: vscode.StatusBarItem;
-    private secondaryItem?: vscode.StatusBarItem;
-    private mode: FlightDeckMode;
-    private prioritySystems: string[];
+    private opusItem: vscode.StatusBarItem;
+    private lastSnapshot?: TelemetrySnapshot;
 
-    constructor(mode: FlightDeckMode, priority: string[]) {
-        this.mode = mode;
-        this.prioritySystems = priority;
-
+    constructor() {
         // Primary status item
         this.statusItem = vscode.window.createStatusBarItem(
             vscode.StatusBarAlignment.Right,
@@ -35,14 +30,12 @@ export class FlightDeck {
         this.statusItem.command = 'agTelemetry.missionBriefing';
         this.statusItem.name = 'AG Telemetry';
 
-        // Secondary item for detailed mode
-        if (mode === 'detailed') {
-            this.secondaryItem = vscode.window.createStatusBarItem(
-                vscode.StatusBarAlignment.Right,
-                149
-            );
-            this.secondaryItem.name = 'AG Telemetry Details';
-        }
+        // Claude Opus status item (appears to the right of main status)
+        this.opusItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Right,
+            148
+        );
+        this.opusItem.name = 'Claude Opus Usage';
 
         this.showInitialState();
     }
@@ -61,21 +54,15 @@ export class FlightDeck {
      * Update display with new telemetry
      */
     update(snapshot: TelemetrySnapshot, uplink: UplinkStatus): void {
+        this.lastSnapshot = snapshot;
+
         if (!uplink.isConnected) {
             this.showDisconnected();
             return;
         }
 
-        switch (this.mode) {
-            case 'minimal':
-                this.renderMinimal(snapshot);
-                break;
-            case 'detailed':
-                this.renderDetailed(snapshot);
-                break;
-            default:
-                this.renderCompact(snapshot);
-        }
+        this.renderCompact(snapshot);
+        this.renderOpusStatus(snapshot);
     }
 
     /**
@@ -89,7 +76,7 @@ export class FlightDeck {
         );
         this.statusItem.command = 'agTelemetry.establishLink';
 
-        this.secondaryItem?.hide();
+        this.opusItem.hide();
     }
 
     /**
@@ -101,20 +88,7 @@ export class FlightDeck {
     }
 
     /**
-     * Render minimal mode - just overall status
-     */
-    private renderMinimal(snapshot: TelemetrySnapshot): void {
-        const indicator = this.getReadinessIndicator(snapshot.overallReadiness);
-        const icon = this.getReadinessIcon(snapshot.overallReadiness);
-
-        this.statusItem.text = `${icon} AGT ${indicator}`;
-        this.statusItem.tooltip = this.buildTooltip(snapshot);
-        this.statusItem.backgroundColor = this.getBackgroundColor(snapshot.overallReadiness);
-        this.statusItem.command = 'agTelemetry.missionBriefing';
-    }
-
-    /**
-     * Render compact mode - status + lowest system
+     * Render compact mode - status + lowest system or average
      */
     private renderCompact(snapshot: TelemetrySnapshot): void {
         const icon = this.getReadinessIcon(snapshot.overallReadiness);
@@ -126,7 +100,6 @@ export class FlightDeck {
         let text: string;
         if (critical && critical.fuelLevel < 0.3) {
             const pct = Math.round(critical.fuelLevel * 100);
-            // Sanitize designation before abbreviating for status bar display
             const safeDesignation = sanitizeLabel(critical.designation, 32);
             const abbr = this.abbreviateSystem(safeDesignation);
             text = `${icon} AGT ${abbr}:${pct}%`;
@@ -138,66 +111,6 @@ export class FlightDeck {
         this.statusItem.tooltip = this.buildTooltip(snapshot);
         this.statusItem.backgroundColor = this.getBackgroundColor(snapshot.overallReadiness);
         this.statusItem.command = 'agTelemetry.missionBriefing';
-    }
-
-    /**
-     * Render detailed mode - multiple systems
-     */
-    private renderDetailed(snapshot: TelemetrySnapshot): void {
-        const icon = this.getReadinessIcon(snapshot.overallReadiness);
-
-        // Primary: overall status
-        this.statusItem.text = `${icon} AGT`;
-        this.statusItem.tooltip = 'AG Telemetry Mission Control\nClick for briefing';
-        this.statusItem.backgroundColor = this.getBackgroundColor(snapshot.overallReadiness);
-
-        // Secondary: priority systems or top 3 lowest
-        const displaySystems = this.getDisplaySystems(snapshot.systems);
-        const parts = displaySystems.map(sys => {
-            // Sanitize designation before abbreviating for status bar display
-            const safeDesignation = sanitizeLabel(sys.designation, 32);
-            const abbr = this.abbreviateSystem(safeDesignation);
-            const pct = Math.round(sys.fuelLevel * 100);
-            const gauge = this.miniGauge(sys.fuelLevel);
-            return `${abbr}${gauge}${pct}`;
-        });
-
-        if (this.secondaryItem) {
-            this.secondaryItem.text = parts.join(' ');
-            this.secondaryItem.tooltip = this.buildTooltip(snapshot);
-            this.secondaryItem.show();
-        }
-    }
-
-    /**
-     * Get systems to display in detailed mode
-     */
-    private getDisplaySystems(systems: FuelSystem[]): FuelSystem[] {
-        // Prioritize user-selected systems
-        const priority = systems.filter(s =>
-            this.prioritySystems.includes(s.systemId)
-        );
-
-        if (priority.length >= 3) {
-            return priority.slice(0, 3);
-        }
-
-        // Fill with lowest fuel systems
-        const remaining = systems
-            .filter(s => !this.prioritySystems.includes(s.systemId))
-            .sort((a, b) => a.fuelLevel - b.fuelLevel);
-
-        return [...priority, ...remaining].slice(0, 3);
-    }
-
-    /**
-     * Create mini ASCII gauge
-     * Returns distinct characters for high/medium/low fuel levels
-     */
-    private miniGauge(level: number): string {
-        if (level >= 0.7) return '▰';  // High: filled block
-        if (level >= 0.3) return '▱';  // Medium: empty block
-        return '▫';                     // Low: small square (critical)
     }
 
     /**
@@ -254,20 +167,6 @@ export class FlightDeck {
     }
 
     /**
-     * Get readiness indicator symbol
-     */
-    private getReadinessIndicator(level: ReadinessLevel): string {
-        const indicators: Record<ReadinessLevel, string> = {
-            [ReadinessLevel.NOMINAL]: '●',
-            [ReadinessLevel.CAUTION]: '◐',
-            [ReadinessLevel.WARNING]: '◑',
-            [ReadinessLevel.CRITICAL]: '○',
-            [ReadinessLevel.OFFLINE]: '×'
-        };
-        return indicators[level];
-    }
-
-    /**
      * Get VS Code icon for readiness
      */
     private getReadinessIcon(level: ReadinessLevel): string {
@@ -299,34 +198,29 @@ export class FlightDeck {
      */
     private buildTooltip(snapshot: TelemetrySnapshot): vscode.MarkdownString {
         const md = new vscode.MarkdownString();
-        // Note: isTrusted is intentionally not set to prevent command link execution
-        // from potentially malicious server-derived content
 
-        md.appendMarkdown('## AG Telemetry - Mission Status\n\n');
+        md.appendMarkdown('## AG Telemetry - Quota Status\n\n');
 
         // Overall status
         const statusEmoji = this.getStatusEmoji(snapshot.overallReadiness);
-        md.appendMarkdown(`**Fleet Readiness:** ${statusEmoji} ${snapshot.overallReadiness}\n\n`);
+        md.appendMarkdown(`**Status:** ${statusEmoji} ${snapshot.overallReadiness}\n\n`);
 
         // System table with pool column
-        md.appendMarkdown('| System | Fuel | Status | Pool |\n');
-        md.appendMarkdown('|--------|------|--------|------|\n');
+        md.appendMarkdown('| Model | Quota | Pool |\n');
+        md.appendMarkdown('|-------|-------|------|\n');
 
         const sorted = [...snapshot.systems].sort((a, b) => a.fuelLevel - b.fuelLevel);
 
-        for (const sys of sorted.slice(0, 6)) {
+        for (const sys of sorted.slice(0, 8)) {
             const pct = Math.round(sys.fuelLevel * 100);
             const bar = this.textGauge(sys.fuelLevel, 6);
-            const status = this.getStatusEmoji(sys.readiness);
-            // Escape server-derived designation to prevent markdown injection
             const safeDesignation = escapeMarkdown(sys.designation);
-            // Show pool indicator
             const poolIndicator = sys.quotaPoolId ? '🔗' : '—';
-            md.appendMarkdown(`| ${safeDesignation} | ${bar} ${pct}% | ${status} | ${poolIndicator} |\n`);
+            md.appendMarkdown(`| ${safeDesignation} | ${bar} ${pct}% | ${poolIndicator} |\n`);
         }
 
-        if (sorted.length > 6) {
-            md.appendMarkdown(`\n_+${sorted.length - 6} more systems_\n`);
+        if (sorted.length > 8) {
+            md.appendMarkdown(`\n_+${sorted.length - 8} more models_\n`);
         }
 
         // Add pool legend
@@ -336,7 +230,7 @@ export class FlightDeck {
         }
 
         md.appendMarkdown('\n---\n');
-        md.appendMarkdown('_Click for Mission Briefing_');
+        md.appendMarkdown('_Click for details_');
 
         return md;
     }
@@ -364,31 +258,44 @@ export class FlightDeck {
     }
 
     /**
-     * Update display mode
+     * Find Claude Opus thinking model from systems
      */
-    setMode(mode: FlightDeckMode): void {
-        const modeChanged = this.mode !== mode;
-        this.mode = mode;
+    private findClaudeOpusThinking(systems: FuelSystem[]): FuelSystem | null {
+        const opusModels = systems.filter(sys => {
+            const lower = sys.designation.toLowerCase();
+            return lower.includes('claude') && lower.includes('opus');
+        });
 
-        if (modeChanged) {
-            if (mode === 'detailed' && !this.secondaryItem) {
-                this.secondaryItem = vscode.window.createStatusBarItem(
-                    vscode.StatusBarAlignment.Right,
-                    149
-                );
-                this.secondaryItem.name = 'AG Telemetry Details';
-            } else if (mode !== 'detailed' && this.secondaryItem) {
-                this.secondaryItem.dispose();
-                this.secondaryItem = undefined;
-            }
+        if (opusModels.length === 0) {
+            return null;
         }
+
+        // Prefer "thinking" variants or version 4/4.5
+        const thinking = opusModels.find(sys => {
+            const lower = sys.designation.toLowerCase();
+            return lower.includes('thinking') || lower.includes('4.5') || lower.includes('4 ');
+        });
+
+        return thinking ?? opusModels[0];
     }
 
     /**
-     * Update priority systems
+     * Render Claude Opus status in dedicated status bar item
      */
-    setPrioritySystems(systems: string[]): void {
-        this.prioritySystems = systems;
+    private renderOpusStatus(snapshot: TelemetrySnapshot): void {
+        const opus = this.findClaudeOpusThinking(snapshot.systems);
+
+        if (!opus) {
+            this.opusItem.hide();
+            return;
+        }
+
+        const pct = Math.round(opus.fuelLevel * 100);
+
+        this.opusItem.text = `Claude Opus 4.5 (Thinking): ${pct}%`;
+        this.opusItem.tooltip = `Remaining usage: ${pct}%`;
+        this.opusItem.backgroundColor = undefined;
+        this.opusItem.show();
     }
 
     /**
@@ -396,6 +303,6 @@ export class FlightDeck {
      */
     dispose(): void {
         this.statusItem.dispose();
-        this.secondaryItem?.dispose();
+        this.opusItem.dispose();
     }
 }

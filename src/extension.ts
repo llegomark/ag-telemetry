@@ -1,41 +1,29 @@
 /**
  * AG Telemetry - Main Extension Entry Point
  * Mission control dashboard for Antigravity AI model monitoring
+ * 
+ * Simplified version focused on quota display
  */
 
 import * as vscode from 'vscode';
 import { TelemetryService } from './telemetry_service';
-import { SystemsViewProvider, FuelViewProvider, AlertsViewProvider } from './tree_providers';
-import { AlertManager } from './alert_manager';
+import { SystemsViewProvider, FuelViewProvider } from './tree_providers';
 import { FlightDeck } from './flight_deck';
-import { HistoryTracker } from './history_tracker';
 import {
     TelemetryConfig,
-    AlertThresholds,
     TelemetrySnapshot,
     FuelSystem
 } from './types';
-import { isValidAlertThresholds, normalizeScanInterval, sanitizeLabel } from './security';
+import { normalizeScanInterval, sanitizeLabel } from './security';
 
 let telemetryService: TelemetryService;
-let alertManager: AlertManager;
 let flightDeck: FlightDeck;
-let historyTracker: HistoryTracker;
 
 let systemsProvider: SystemsViewProvider;
 let fuelProvider: FuelViewProvider;
-let alertsProvider: AlertsViewProvider;
-
-/** Default alert thresholds that are known to be valid */
-const DEFAULT_THRESHOLDS: AlertThresholds = {
-    caution: 40,
-    warning: 20,
-    critical: 5
-};
 
 /**
  * Load configuration from VS Code settings
- * Validates threshold ordering and falls back to defaults if invalid
  */
 function loadConfig(): TelemetryConfig {
     const config = vscode.workspace.getConfiguration('agTelemetry');
@@ -56,51 +44,11 @@ function loadConfig(): TelemetryConfig {
         return fallback;
     };
 
-    // Get user-configured thresholds
-    const userThresholds = readSetting<AlertThresholds>('alertThresholds', DEFAULT_THRESHOLDS);
-
-    // Validate threshold ordering (caution > warning > critical)
-    // Fall back to defaults if invalid to prevent incorrect alert behavior
-    const alertThresholds = isValidAlertThresholds(userThresholds)
-        ? userThresholds
-        : DEFAULT_THRESHOLDS;
-
     const rawScanInterval = readSetting<number>('scanInterval', 90);
     const scanInterval = normalizeScanInterval(rawScanInterval, 90);
 
-    const rawEnableNotifications = readSetting<boolean>('enableNotifications', true);
-    const enableNotifications = typeof rawEnableNotifications === 'boolean'
-        ? rawEnableNotifications
-        : true;
-
-    const rawFlightDeckMode = readSetting<string>('flightDeckMode', 'compact');
-    const flightDeckMode = rawFlightDeckMode === 'compact' ||
-        rawFlightDeckMode === 'detailed' ||
-        rawFlightDeckMode === 'minimal'
-        ? rawFlightDeckMode
-        : 'compact';
-
-    const rawTrackHistory = readSetting<boolean>('trackHistory', true);
-    const trackHistory = typeof rawTrackHistory === 'boolean'
-        ? rawTrackHistory
-        : true;
-
-    const rawPrioritySystems = readSetting<string[]>('prioritySystems', []);
-    const prioritySystems = Array.isArray(rawPrioritySystems)
-        ? rawPrioritySystems
-            .filter((value): value is string => typeof value === 'string')
-            .map(value => value.trim())
-            .filter(value => value.length > 0 && value.length <= 256)
-            .slice(0, 100)
-        : [];
-
     return {
-        scanInterval,
-        alertThresholds,
-        enableNotifications,
-        flightDeckMode,
-        trackHistory,
-        prioritySystems
+        scanInterval
     };
 }
 
@@ -108,32 +56,15 @@ function loadConfig(): TelemetryConfig {
  * Extension activation
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    // Security: Check workspace trust before full activation
-    // In untrusted workspaces, we still activate but warn the user
-    // since the extension primarily reads from a local trusted process
-    if (!vscode.workspace.isTrusted) {
-        // Silent warning via status bar instead of popup
-        vscode.window.setStatusBarMessage(
-            '$(shield) AG Telemetry: Untrusted workspace - some settings may be ignored',
-            5000
-        );
-    }
-
-    const config = loadConfig();
-
     // Initialize core services
-    telemetryService = new TelemetryService(config.alertThresholds);
-    alertManager = new AlertManager(config.enableNotifications);
-    flightDeck = new FlightDeck(config.flightDeckMode, config.prioritySystems);
-    historyTracker = new HistoryTracker(context, config.trackHistory);
+    telemetryService = new TelemetryService();
+    flightDeck = new FlightDeck();
 
     // Initialize view providers
     systemsProvider = new SystemsViewProvider();
     fuelProvider = new FuelViewProvider();
-    alertsProvider = new AlertsViewProvider();
 
-    // Register tree views using createTreeView for better control over visibility
-    // This approach is more reliable than registerTreeDataProvider for keeping views visible
+    // Register tree views
     const systemsView = vscode.window.createTreeView('agTelemetrySystemsView', {
         treeDataProvider: systemsProvider,
         showCollapseAll: false
@@ -142,27 +73,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         treeDataProvider: fuelProvider,
         showCollapseAll: true
     });
-    const alertsView = vscode.window.createTreeView('agTelemetryAlertsView', {
-        treeDataProvider: alertsProvider,
-        showCollapseAll: false
-    });
 
-    context.subscriptions.push(systemsView, fuelView, alertsView);
+    context.subscriptions.push(systemsView, fuelView);
 
-    // IMPORTANT: Immediately refresh all views to ensure the view container stays visible
-    // Without this, VS Code may hide the container if views appear uninitialized
+    // Immediately refresh views to ensure container stays visible
     systemsProvider.refresh(undefined, { isConnected: false, signalStrength: 0 });
-    fuelProvider.refresh([], []);
-    alertsProvider.refresh([]);
-
-    // Silent mode: Don't force-focus the sidebar on startup
-    // The view container icon will still be visible in the activity bar
+    fuelProvider.refresh([]);
 
     // Subscribe to telemetry events
     const unsubscribe = telemetryService.subscribe(event => {
         switch (event.type) {
             case 'telemetry-received':
-                handleTelemetryUpdate(event.payload as TelemetrySnapshot, config);
+                handleTelemetryUpdate(event.payload as TelemetrySnapshot);
                 break;
             case 'uplink-established':
                 vscode.window.setStatusBarMessage('$(radio-tower) AG Telemetry: Uplink established', 3000);
@@ -174,15 +96,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             case 'scan-started':
                 flightDeck.showScanning();
                 break;
-            case 'error': {
+            case 'error':
                 console.error('AG Telemetry error:', event.payload);
-                // Handle consecutive failures with user feedback
-                const errorPayload = event.payload as { type?: string; failureCount?: number } | undefined;
-                if (errorPayload?.type === 'consecutive-failures' && errorPayload.failureCount) {
-                    handleConsecutiveFailures(errorPayload.failureCount);
-                }
                 break;
-            }
         }
     });
 
@@ -203,8 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Register disposables
     context.subscriptions.push(
         { dispose: () => telemetryService.dispose() },
-        { dispose: () => flightDeck.dispose() },
-        { dispose: () => historyTracker.dispose() }
+        { dispose: () => flightDeck.dispose() }
     );
 
     // Initial connection with delay
@@ -216,7 +131,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 /**
  * Initialize with retry logic
  */
-async function initializeWithRetry(attempts: number = 3, showNotification: boolean = true): Promise<void> {
+async function initializeWithRetry(attempts: number = 3): Promise<void> {
     for (let i = 0; i < attempts; i++) {
         const connected = await telemetryService.establishUplink();
 
@@ -235,19 +150,17 @@ async function initializeWithRetry(attempts: number = 3, showNotification: boole
     flightDeck.showDisconnected();
     systemsProvider.refresh(undefined, telemetryService.getUplinkStatus());
 
-    // Silent mode: Show connection status in status bar instead of popup
-    if (showNotification) {
-        vscode.window.setStatusBarMessage(
-            '$(warning) AG Telemetry: Waiting for Antigravity connection...',
-            5000
-        );
-    }
+    // Silent notification via status bar
+    vscode.window.setStatusBarMessage(
+        '$(warning) AG Telemetry: Waiting for Antigravity connection...',
+        5000
+    );
 }
 
 /**
  * Handle telemetry update
  */
-function handleTelemetryUpdate(snapshot: TelemetrySnapshot, config: TelemetryConfig): void {
+function handleTelemetryUpdate(snapshot: TelemetrySnapshot): void {
     const uplink = telemetryService.getUplinkStatus();
 
     // Update flight deck
@@ -255,14 +168,7 @@ function handleTelemetryUpdate(snapshot: TelemetrySnapshot, config: TelemetryCon
 
     // Update tree views
     systemsProvider.refresh(snapshot, uplink);
-    fuelProvider.refresh(snapshot.systems, config.prioritySystems);
-
-    // Process alerts
-    const alerts = alertManager.processTelemetry(snapshot.systems);
-    alertsProvider.refresh(alerts);
-
-    // Record history
-    historyTracker.recordSample(snapshot.systems);
+    fuelProvider.refresh(snapshot.systems);
 }
 
 /**
@@ -271,22 +177,8 @@ function handleTelemetryUpdate(snapshot: TelemetrySnapshot, config: TelemetryCon
 function handleConfigChange(): void {
     const config = loadConfig();
 
-    // Update services
-    telemetryService.updateThresholds(config.alertThresholds);
-    alertManager.updateConfig(config.enableNotifications);
-    flightDeck.setMode(config.flightDeckMode);
-    flightDeck.setPrioritySystems(config.prioritySystems);
-    historyTracker.setEnabled(config.trackHistory);
-
     // Restart periodic scans with new interval
-    // Note: startPeriodicScans() internally calls stopPeriodicScans()
     telemetryService.startPeriodicScans(config.scanInterval);
-
-    // Refresh views with current data
-    const snapshot = telemetryService.getLastSnapshot();
-    if (snapshot) {
-        fuelProvider.refresh(snapshot.systems, config.prioritySystems);
-    }
 }
 
 /**
@@ -301,24 +193,10 @@ function registerCommands(context: vscode.ExtensionContext): void {
         })
     );
 
-    // Mission briefing
+    // Mission briefing (simplified)
     context.subscriptions.push(
         vscode.commands.registerCommand('agTelemetry.missionBriefing', () => {
             showMissionBriefing();
-        })
-    );
-
-    // View trends
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agTelemetry.viewTrends', () => {
-            historyTracker.showTrendVisualization();
-        })
-    );
-
-    // Configure alerts
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agTelemetry.configureAlerts', () => {
-            showAlertConfiguration();
         })
     );
 
@@ -330,16 +208,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
                 title: 'AG Telemetry: Establishing uplink...',
                 cancellable: false
             }, async () => {
-                // Suppress auto-notification since we handle result manually
-                await initializeWithRetry(3, false);
+                await initializeWithRetry(3);
             });
 
-            // Check connection status and notify user (silent mode: status bar for success)
             const uplink = telemetryService.getUplinkStatus();
             if (uplink.isConnected) {
                 vscode.window.setStatusBarMessage('$(check) AG Telemetry: Uplink established', 3000);
             } else {
-                // Keep error message as popup since user explicitly requested connection
                 vscode.window.showErrorMessage(
                     'AG Telemetry: Failed to establish uplink. Ensure Antigravity is running.'
                 );
@@ -356,7 +231,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
 }
 
 /**
- * Show mission briefing quick pick
+ * Show mission briefing quick pick (simplified)
  */
 async function showMissionBriefing(): Promise<void> {
     const snapshot = telemetryService.getLastSnapshot();
@@ -375,12 +250,6 @@ async function showMissionBriefing(): Promise<void> {
     }
 
     const items: vscode.QuickPickItem[] = [];
-
-    // Section: Fleet Overview
-    items.push({
-        label: `Fleet Status: ${snapshot.overallReadiness.toUpperCase()}`,
-        kind: vscode.QuickPickItemKind.Separator
-    });
 
     // Group systems by quota pool
     const pools = new Map<string, FuelSystem[]>();
@@ -407,19 +276,17 @@ async function showMissionBriefing(): Promise<void> {
 
         // Pool header
         items.push({
-            label: `$(link) Shared Pool (${poolSystems.length} models) ${gauge} ${pct}%`,
+            label: `🔗 Shared Pool (${poolSystems.length} models)`,
+            description: `${gauge} ${pct}%`,
             kind: vscode.QuickPickItemKind.Separator
         });
 
         // Pool members
         for (const sys of poolSystems.sort((a, b) => a.designation.localeCompare(b.designation))) {
-            const trend = historyTracker.generateTrendSummary(sys.systemId);
             const safeDesignation = sanitizeLabel(sys.designation);
-
             items.push({
                 label: `  ${getSystemIcon(sys)} ${safeDesignation}`,
-                description: trend !== '?' ? `Trend: ${trend}` : undefined,
-                detail: 'Shares quota with other models in this pool'
+                description: 'Shares quota with other models'
             });
         }
     }
@@ -435,17 +302,15 @@ async function showMissionBriefing(): Promise<void> {
     for (const sys of standalone.sort((a, b) => a.fuelLevel - b.fuelLevel)) {
         const pct = Math.round(sys.fuelLevel * 100);
         const gauge = renderQuickGauge(sys.fuelLevel);
-        const trend = historyTracker.generateTrendSummary(sys.systemId);
         const safeDesignation = sanitizeLabel(sys.designation);
 
         items.push({
             label: `${getSystemIcon(sys)} ${safeDesignation}`,
-            description: `${gauge} ${pct}%`,
-            detail: trend !== '?' ? `Trend: ${trend}` : undefined
+            description: `${gauge} ${pct}%`
         });
     }
 
-    // Section: Actions
+    // Action: Refresh
     items.push({
         label: '',
         kind: vscode.QuickPickItemKind.Separator
@@ -456,119 +321,13 @@ async function showMissionBriefing(): Promise<void> {
         description: 'Perform manual scan'
     });
 
-    items.push({
-        label: '$(graph-line) View Trends',
-        description: 'Analyze usage patterns'
-    });
-
-    items.push({
-        label: '$(bell) Configure Alerts',
-        description: 'Set notification thresholds'
-    });
-
     const selected = await vscode.window.showQuickPick(items, {
-        title: 'AG Telemetry - Mission Briefing',
-        placeHolder: 'Select a system or action'
+        title: 'AG Telemetry - Model Quota Status',
+        placeHolder: 'View your AI model quota levels'
     });
 
-    if (selected) {
-        if (selected.label.includes('Refresh')) {
-            vscode.commands.executeCommand('agTelemetry.refreshTelemetry');
-        } else if (selected.label.includes('Trends')) {
-            vscode.commands.executeCommand('agTelemetry.viewTrends');
-        } else if (selected.label.includes('Alerts')) {
-            vscode.commands.executeCommand('agTelemetry.configureAlerts');
-        }
-    }
-}
-
-/**
- * Show alert configuration
- */
-async function showAlertConfiguration(): Promise<void> {
-    const config = loadConfig();
-
-    const items: vscode.QuickPickItem[] = [
-        {
-            label: `$(bell) Notifications: ${config.enableNotifications ? 'Enabled' : 'Disabled'}`,
-            description: 'Toggle notification alerts'
-        },
-        {
-            label: `$(warning) Caution Threshold: ${config.alertThresholds.caution}%`,
-            description: 'Set caution level'
-        },
-        {
-            label: `$(flame) Warning Threshold: ${config.alertThresholds.warning}%`,
-            description: 'Set warning level'
-        },
-        {
-            label: `$(error) Critical Threshold: ${config.alertThresholds.critical}%`,
-            description: 'Set critical level'
-        }
-    ];
-
-    const selected = await vscode.window.showQuickPick(items, {
-        title: 'AG Telemetry - Alert Configuration',
-        placeHolder: 'Select a setting to modify'
-    });
-
-    if (!selected) return;
-
-    if (selected.label.includes('Notifications')) {
-        const newValue = !config.enableNotifications;
-        await vscode.workspace.getConfiguration('agTelemetry')
-            .update('enableNotifications', newValue, vscode.ConfigurationTarget.Global);
-
-        vscode.window.setStatusBarMessage(
-            `$(bell) AG Telemetry: Notifications ${newValue ? 'enabled' : 'disabled'}`,
-            3000
-        );
-    } else if (selected.label.includes('Caution')) {
-        await updateThreshold('caution', config.alertThresholds);
-    } else if (selected.label.includes('Warning')) {
-        await updateThreshold('warning', config.alertThresholds);
-    } else if (selected.label.includes('Critical')) {
-        await updateThreshold('critical', config.alertThresholds);
-    }
-}
-
-/**
- * Update a specific threshold
- * Validates that the new threshold maintains proper ordering
- */
-async function updateThreshold(
-    level: 'caution' | 'warning' | 'critical',
-    current: AlertThresholds
-): Promise<void> {
-    const input = await vscode.window.showInputBox({
-        title: `Set ${level} threshold`,
-        prompt: 'Enter percentage (1-100). Must maintain order: caution > warning > critical',
-        value: current[level].toString(),
-        validateInput: (value) => {
-            const num = parseInt(value, 10);
-            if (isNaN(num) || num < 1 || num > 100) {
-                return 'Please enter a number between 1 and 100';
-            }
-
-            // Validate ordering with the proposed new value
-            const proposed = { ...current, [level]: num };
-            if (!isValidAlertThresholds(proposed)) {
-                return `Invalid ordering. Thresholds must satisfy: caution (${level === 'caution' ? num : current.caution}) > warning (${level === 'warning' ? num : current.warning}) > critical (${level === 'critical' ? num : current.critical})`;
-            }
-
-            return null;
-        }
-    });
-
-    if (input) {
-        const newThresholds = { ...current, [level]: parseInt(input, 10) };
-        await vscode.workspace.getConfiguration('agTelemetry')
-            .update('alertThresholds', newThresholds, vscode.ConfigurationTarget.Global);
-
-        vscode.window.setStatusBarMessage(
-            `$(check) AG Telemetry: ${level} threshold set to ${input}%`,
-            3000
-        );
+    if (selected?.label.includes('Refresh')) {
+        vscode.commands.executeCommand('agTelemetry.refreshTelemetry');
     }
 }
 
@@ -632,7 +391,6 @@ async function runDiagnostics(): Promise<void> {
             const elapsed = Math.round((Date.now() - diagnostic.uplink.lastContact) / 1000);
             output.appendLine(`   ✓ Last Contact: ${elapsed}s ago`);
         }
-        // Security: Never log token material, even partially redacted
         output.appendLine(`   ✓ CSRF Token: ${diagnostic.uplink.securityToken ? 'Present' : 'Missing'}`);
     } else {
         output.appendLine('   ✗ Status: DISCONNECTED');
@@ -640,25 +398,9 @@ async function runDiagnostics(): Promise<void> {
     }
     output.appendLine('');
 
-    // Section 2: Failure Tracking
+    // Section 2: Schema Validation
     output.appendLine('───────────────────────────────────────────────────────');
-    output.appendLine('2. FAILURE TRACKING');
-    output.appendLine('───────────────────────────────────────────────────────');
-
-    if (diagnostic.consecutiveFailures === 0) {
-        output.appendLine('   ✓ Consecutive Failures: 0');
-        output.appendLine('   ✓ System operating normally');
-    } else {
-        output.appendLine(`   ⚠ Consecutive Failures: ${diagnostic.consecutiveFailures}`);
-        if (diagnostic.consecutiveFailures >= 3) {
-            output.appendLine('   ✗ Threshold exceeded - API may have changed');
-        }
-    }
-    output.appendLine('');
-
-    // Section 3: Schema Validation
-    output.appendLine('───────────────────────────────────────────────────────');
-    output.appendLine('3. SCHEMA VALIDATION');
+    output.appendLine('2. SCHEMA VALIDATION');
     output.appendLine('───────────────────────────────────────────────────────');
 
     if (diagnostic.lastValidation) {
@@ -683,13 +425,13 @@ async function runDiagnostics(): Promise<void> {
     }
     output.appendLine('');
 
-    // Section 4: Telemetry Data
+    // Section 3: Telemetry Data
     output.appendLine('───────────────────────────────────────────────────────');
-    output.appendLine('4. TELEMETRY DATA');
+    output.appendLine('3. TELEMETRY DATA');
     output.appendLine('───────────────────────────────────────────────────────');
 
     if (diagnostic.hasSnapshot) {
-        output.appendLine(`   ✓ Data Available: YES`);
+        output.appendLine('   ✓ Data Available: YES');
         output.appendLine(`   ✓ Systems Detected: ${diagnostic.systemCount}`);
 
         const snapshot = telemetryService.getLastSnapshot();
@@ -697,7 +439,6 @@ async function runDiagnostics(): Promise<void> {
             output.appendLine('   Systems:');
             for (const sys of snapshot.systems) {
                 const pct = Math.round(sys.fuelLevel * 100);
-                // Sanitize designation to prevent control chars in diagnostic output
                 const safeDesignation = sanitizeLabel(sys.designation, 128);
                 output.appendLine(`     - ${safeDesignation}: ${pct}% (${sys.readiness})`);
             }
@@ -706,42 +447,6 @@ async function runDiagnostics(): Promise<void> {
         output.appendLine('   ✗ Data Available: NO');
         output.appendLine('   ✗ No telemetry snapshot captured yet');
     }
-    output.appendLine('');
-
-    // Section 5: Response Structure (sanitized - no raw data)
-    output.appendLine('───────────────────────────────────────────────────────');
-    output.appendLine('5. API RESPONSE STRUCTURE');
-    output.appendLine('───────────────────────────────────────────────────────');
-    // Security: Do not log raw response data which may contain sensitive info
-    // Instead, show only the structural validation result
-    if (diagnostic.lastValidation) {
-        output.appendLine(`   Structure Valid: ${diagnostic.lastValidation.valid ? 'YES' : 'NO'}`);
-        output.appendLine(`   Top-level Keys: [${diagnostic.lastValidation.receivedKeys.join(', ')}]`);
-    } else {
-        output.appendLine('   No API response captured yet');
-    }
-    output.appendLine('');
-
-    // Section 6: Expected API Structure
-    output.appendLine('───────────────────────────────────────────────────────');
-    output.appendLine('6. EXPECTED API STRUCTURE');
-    output.appendLine('───────────────────────────────────────────────────────');
-    output.appendLine('   {');
-    output.appendLine('     "userStatus": {');
-    output.appendLine('       "cascadeModelConfigData": {');
-    output.appendLine('         "clientModelConfigs": [');
-    output.appendLine('           {');
-    output.appendLine('             "label": "model-name",');
-    output.appendLine('             "modelOrAlias": { "model": "model-id" },');
-    output.appendLine('             "quotaInfo": {');
-    output.appendLine('               "remainingFraction": 0.75,');
-    output.appendLine('               "resetTime": "ISO-8601-timestamp"');
-    output.appendLine('             }');
-    output.appendLine('           }');
-    output.appendLine('         ]');
-    output.appendLine('       }');
-    output.appendLine('     }');
-    output.appendLine('   }');
     output.appendLine('');
 
     // Summary
@@ -776,24 +481,7 @@ async function runDiagnostics(): Promise<void> {
     output.appendLine('To report issues: https://github.com/llegomark/ag-telemetry/issues');
     output.appendLine('───────────────────────────────────────────────────────');
 
-    // Silent mode: Show status bar message, user already sees output panel
     vscode.window.setStatusBarMessage('$(check) AG Telemetry: Diagnostics complete', 5000);
-
-    // Still show actions but in a less intrusive way (quick pick instead of modal)
-    const action = await vscode.window.showQuickPick(
-        ['Retry Connection', 'Report Issue', 'Close'],
-        { placeHolder: 'Diagnostics complete - select an action (optional)' }
-    );
-
-    if (action === 'Retry Connection') {
-        telemetryService.resetFailureCounter();
-        vscode.commands.executeCommand('agTelemetry.establishLink');
-    } else if (action === 'Report Issue') {
-        const issueUrl = 'https://github.com/llegomark/ag-telemetry/issues/new?' +
-            'template=bug_report.md&title=' +
-            encodeURIComponent('[Diagnostic] API Compatibility Issue');
-        vscode.env.openExternal(vscode.Uri.parse(issueUrl));
-    }
 }
 
 /**
@@ -809,34 +497,9 @@ function getExtensionVersion(): string {
 }
 
 /**
- * Handle consecutive failure events with user feedback
- */
-function handleConsecutiveFailures(failureCount: number): void {
-    vscode.window.showErrorMessage(
-        `AG Telemetry: ${failureCount} consecutive failures. The Antigravity API may have changed.`,
-        'Run Diagnostics',
-        'Report Issue',
-        'Retry'
-    ).then(action => {
-        if (action === 'Run Diagnostics') {
-            vscode.commands.executeCommand('agTelemetry.runDiagnostics');
-        } else if (action === 'Report Issue') {
-            const issueUrl = 'https://github.com/llegomark/ag-telemetry/issues/new?' +
-                'template=bug_report.md&title=' +
-                encodeURIComponent('[API Change] Consecutive Failures Detected');
-            vscode.env.openExternal(vscode.Uri.parse(issueUrl));
-        } else if (action === 'Retry') {
-            telemetryService.resetFailureCounter();
-            vscode.commands.executeCommand('agTelemetry.establishLink');
-        }
-    });
-}
-
-/**
  * Extension deactivation
  */
 export function deactivate(): void {
     telemetryService?.dispose();
     flightDeck?.dispose();
-    historyTracker?.dispose();
 }

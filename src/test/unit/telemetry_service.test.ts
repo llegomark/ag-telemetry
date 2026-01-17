@@ -4,7 +4,14 @@
  */
 
 import { expect } from 'chai';
-import { ReadinessLevel, SystemClass, AlertThresholds, ServerTelemetryResponse } from '../../types';
+import { ReadinessLevel, SystemClass, ServerTelemetryResponse } from '../../types';
+
+// Local thresholds for testing (same as defaults in telemetry_service.ts)
+interface AlertThresholds {
+    caution: number;
+    warning: number;
+    critical: number;
+}
 
 // We need to test private methods, so we'll extract the pure logic for testing
 // These tests validate the algorithm implementations

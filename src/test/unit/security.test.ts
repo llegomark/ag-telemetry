@@ -1,6 +1,6 @@
 /**
  * AG Telemetry - Security Utilities Unit Tests
- * Tests for escapeMarkdown, isValidPid, and isValidTrendDataPoint
+ * Tests for security sanitization and validation functions
  */
 
 import { expect } from 'chai';
@@ -8,7 +8,6 @@ import {
     escapeMarkdown,
     isValidPid,
     isValidCsrfToken,
-    isValidTrendDataPoint,
     isValidAlertThresholds,
     normalizeScanInterval,
     sanitizeNotificationContent,
@@ -160,178 +159,7 @@ describe('Security Utilities', () => {
         });
     });
 
-    describe('isValidTrendDataPoint', () => {
-        it('should return true for valid data points', () => {
-            const valid = {
-                timestamp: Date.now(),
-                systemId: 'gemini-pro',
-                fuelLevel: 0.75
-            };
-            expect(isValidTrendDataPoint(valid)).to.be.true;
-        });
 
-        it('should return true for boundary fuel levels', () => {
-            expect(isValidTrendDataPoint({
-                timestamp: 1,
-                systemId: 'test',
-                fuelLevel: 0
-            })).to.be.true;
-
-            expect(isValidTrendDataPoint({
-                timestamp: 1,
-                systemId: 'test',
-                fuelLevel: 1
-            })).to.be.true;
-        });
-
-        it('should return false for null or undefined', () => {
-            expect(isValidTrendDataPoint(null)).to.be.false;
-            expect(isValidTrendDataPoint(undefined)).to.be.false;
-        });
-
-        it('should return false for non-objects', () => {
-            expect(isValidTrendDataPoint('string')).to.be.false;
-            expect(isValidTrendDataPoint(123)).to.be.false;
-            expect(isValidTrendDataPoint(true)).to.be.false;
-            expect(isValidTrendDataPoint([])).to.be.false;
-        });
-
-        it('should return false for missing timestamp', () => {
-            expect(isValidTrendDataPoint({
-                systemId: 'test',
-                fuelLevel: 0.5
-            })).to.be.false;
-        });
-
-        it('should return false for invalid timestamp', () => {
-            expect(isValidTrendDataPoint({
-                timestamp: 'invalid',
-                systemId: 'test',
-                fuelLevel: 0.5
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: -1,
-                systemId: 'test',
-                fuelLevel: 0.5
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: NaN,
-                systemId: 'test',
-                fuelLevel: 0.5
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: Infinity,
-                systemId: 'test',
-                fuelLevel: 0.5
-            })).to.be.false;
-        });
-
-        it('should return false for missing systemId', () => {
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                fuelLevel: 0.5
-            })).to.be.false;
-        });
-
-        it('should return false for invalid systemId', () => {
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: '',
-                fuelLevel: 0.5
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 123,
-                fuelLevel: 0.5
-            })).to.be.false;
-
-            // Test max length (256 chars)
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'a'.repeat(257),
-                fuelLevel: 0.5
-            })).to.be.false;
-        });
-
-        it('should return true for systemId at max length', () => {
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'a'.repeat(256),
-                fuelLevel: 0.5
-            })).to.be.true;
-        });
-
-        it('should return false for missing fuelLevel', () => {
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'test'
-            })).to.be.false;
-        });
-
-        it('should return false for invalid fuelLevel', () => {
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'test',
-                fuelLevel: 'invalid'
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'test',
-                fuelLevel: -0.1
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'test',
-                fuelLevel: 1.1
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'test',
-                fuelLevel: NaN
-            })).to.be.false;
-
-            expect(isValidTrendDataPoint({
-                timestamp: Date.now(),
-                systemId: 'test',
-                fuelLevel: Infinity
-            })).to.be.false;
-        });
-
-        it('should handle prototype pollution attempts', () => {
-            const malicious = Object.create(null);
-            malicious.timestamp = Date.now();
-            malicious.systemId = 'test';
-            malicious.fuelLevel = 0.5;
-            expect(isValidTrendDataPoint(malicious)).to.be.true;
-
-            // Object with __proto__ property
-            const protoAttack = {
-                timestamp: Date.now(),
-                systemId: 'test',
-                fuelLevel: 0.5,
-                __proto__: { isAdmin: true }
-            };
-            expect(isValidTrendDataPoint(protoAttack)).to.be.true;
-        });
-
-        it('should ignore extra properties', () => {
-            const withExtra = {
-                timestamp: Date.now(),
-                systemId: 'test',
-                fuelLevel: 0.5,
-                extraField: 'ignored',
-                anotherField: 123
-            };
-            expect(isValidTrendDataPoint(withExtra)).to.be.true;
-        });
-    });
 
     describe('isValidAlertThresholds', () => {
         it('should return true for valid ordered thresholds', () => {

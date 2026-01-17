@@ -8,10 +8,8 @@ import {
     ReadinessLevel,
     SystemClass,
     TelemetrySnapshot,
-    TelemetryAlert,
     UplinkStatus,
     AlertThresholds,
-    TrendDataPoint,
     ServerTelemetryResponse,
     ModelConfig
 } from '../../types';
@@ -124,33 +122,6 @@ export function createTelemetrySnapshot(overrides: Partial<TelemetrySnapshot> = 
 }
 
 /**
- * Create a TelemetryAlert with optional overrides
- */
-export function createTelemetryAlert(overrides: Partial<TelemetryAlert> = {}): TelemetryAlert {
-    return {
-        id: 'alert-test-1',
-        systemId: 'test-system',
-        systemDesignation: 'Test System',
-        level: ReadinessLevel.WARNING,
-        message: 'Low fuel: 15%',
-        timestamp: Date.now(),
-        acknowledged: false,
-        ...overrides
-    };
-}
-
-/**
- * Create a critical TelemetryAlert
- */
-export function createCriticalAlert(overrides: Partial<TelemetryAlert> = {}): TelemetryAlert {
-    return createTelemetryAlert({
-        level: ReadinessLevel.CRITICAL,
-        message: 'Critical: 3% fuel',
-        ...overrides
-    });
-}
-
-/**
  * Create an UplinkStatus with optional overrides
  */
 export function createUplinkStatus(overrides: Partial<UplinkStatus> = {}): UplinkStatus {
@@ -172,57 +143,6 @@ export function createDisconnectedUplink(): UplinkStatus {
         isConnected: false,
         signalStrength: 0
     };
-}
-
-/**
- * Create TrendDataPoints over time
- */
-export function createTrendDataPoints(
-    systemId: string,
-    points: { hoursAgo: number; fuelLevel: number }[]
-): TrendDataPoint[] {
-    const now = Date.now();
-
-    return points.map(p => ({
-        timestamp: now - (p.hoursAgo * 60 * 60 * 1000),
-        systemId,
-        fuelLevel: p.fuelLevel
-    })).sort((a, b) => a.timestamp - b.timestamp);
-}
-
-/**
- * Create a declining trend (fuel being consumed)
- */
-export function createDecliningTrend(systemId: string = 'test-system'): TrendDataPoint[] {
-    return createTrendDataPoints(systemId, [
-        { hoursAgo: 2, fuelLevel: 0.80 },
-        { hoursAgo: 1.5, fuelLevel: 0.70 },
-        { hoursAgo: 1, fuelLevel: 0.60 },
-        { hoursAgo: 0.5, fuelLevel: 0.50 },
-        { hoursAgo: 0, fuelLevel: 0.40 }
-    ]);
-}
-
-/**
- * Create a rising trend (fuel being replenished)
- */
-export function createRisingTrend(systemId: string = 'test-system'): TrendDataPoint[] {
-    return createTrendDataPoints(systemId, [
-        { hoursAgo: 1, fuelLevel: 0.20 },
-        { hoursAgo: 0.5, fuelLevel: 0.50 },
-        { hoursAgo: 0, fuelLevel: 0.90 }
-    ]);
-}
-
-/**
- * Create a stable trend (minimal change)
- */
-export function createStableTrend(systemId: string = 'test-system'): TrendDataPoint[] {
-    return createTrendDataPoints(systemId, [
-        { hoursAgo: 1, fuelLevel: 0.50 },
-        { hoursAgo: 0.5, fuelLevel: 0.49 },
-        { hoursAgo: 0, fuelLevel: 0.48 }
-    ]);
 }
 
 /**

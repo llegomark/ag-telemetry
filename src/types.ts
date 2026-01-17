@@ -1,9 +1,9 @@
 /**
  * AG Telemetry - Type Definitions
- * Space mission-themed types for AI model monitoring
+ * Simplified types for AI model quota monitoring
  */
 
-/** System readiness levels based on fuel reserves */
+/** System readiness levels based on quota */
 export enum ReadinessLevel {
     NOMINAL = 'nominal',
     CAUTION = 'caution',
@@ -20,7 +20,7 @@ export interface FuelSystem {
     designation: string;
     /** Fuel level as decimal (0.0 - 1.0) */
     fuelLevel: number;
-    /** ISO timestamp for next fuel replenishment */
+    /** ISO timestamp for next quota reset */
     replenishmentEta?: string;
     /** Current readiness assessment */
     readiness: ReadinessLevel;
@@ -49,29 +49,11 @@ export interface TelemetrySnapshot {
     activeAlerts: number;
 }
 
-/** Historical data point for trend analysis */
-export interface TrendDataPoint {
-    timestamp: number;
-    systemId: string;
-    fuelLevel: number;
-}
-
-/** Alert configuration thresholds */
+/** Default alert thresholds (used internally) */
 export interface AlertThresholds {
     caution: number;
     warning: number;
     critical: number;
-}
-
-/** Active alert instance */
-export interface TelemetryAlert {
-    id: string;
-    systemId: string;
-    systemDesignation: string;
-    level: ReadinessLevel;
-    message: string;
-    timestamp: number;
-    acknowledged: boolean;
 }
 
 /** Uplink connection state */
@@ -83,14 +65,9 @@ export interface UplinkStatus {
     signalStrength: number;
 }
 
-/** Configuration for the extension */
+/** Configuration for the extension (simplified) */
 export interface TelemetryConfig {
     scanInterval: number;
-    alertThresholds: AlertThresholds;
-    enableNotifications: boolean;
-    flightDeckMode: 'compact' | 'detailed' | 'minimal';
-    trackHistory: boolean;
-    prioritySystems: string[];
 }
 
 /** API response from the language server */
@@ -119,8 +96,6 @@ export type TelemetryEventType =
     | 'uplink-established'
     | 'uplink-lost'
     | 'telemetry-received'
-    | 'alert-triggered'
-    | 'alert-cleared'
     | 'scan-started'
     | 'scan-completed'
     | 'error';
@@ -138,7 +113,6 @@ export enum TreeItemType {
     FUEL_SYSTEM = 'fuel-system',
     FUEL_GAUGE = 'fuel-gauge',
     REPLENISH_TIMER = 'replenish-timer',
-    ALERT_ITEM = 'alert-item',
     INFO_ITEM = 'info-item',
     UPLINK_STATUS = 'uplink-status',
     QUOTA_POOL = 'quota-pool'

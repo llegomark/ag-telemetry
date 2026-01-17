@@ -1,6 +1,7 @@
 /**
  * AG Telemetry - Tree Data Providers
  * Sidebar view providers for mission control interface
+ * Simplified version: System Status and Fuel Reserves only
  */
 
 import * as vscode from 'vscode';
@@ -8,7 +9,6 @@ import {
     FuelSystem,
     ReadinessLevel,
     TelemetrySnapshot,
-    TelemetryAlert,
     UplinkStatus,
     SystemClass,
     TreeItemType
@@ -30,7 +30,7 @@ class TelemetryTreeItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly itemType: TreeItemType,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly data?: FuelSystem | TelemetryAlert | UplinkStatus | PoolData
+        public readonly data?: FuelSystem | UplinkStatus | PoolData
     ) {
         super(label, collapsibleState);
     }
@@ -111,7 +111,7 @@ export class SystemsViewProvider implements vscode.TreeDataProvider<TelemetryTre
 
     private createReadinessItem(): TelemetryTreeItem {
         const readiness = this.snapshot!.overallReadiness;
-        const label = `Fleet Status: ${this.getReadinessLabel(readiness)}`;
+        const label = `Status: ${this.getReadinessLabel(readiness)}`;
 
         const item = new TelemetryTreeItem(
             label,
@@ -134,7 +134,7 @@ export class SystemsViewProvider implements vscode.TreeDataProvider<TelemetryTre
         ).length;
 
         const item = new TelemetryTreeItem(
-            `Systems: ${nominal}/${total} Nominal`,
+            `Models: ${nominal}/${total} Nominal`,
             TreeItemType.INFO_ITEM,
             vscode.TreeItemCollapsibleState.None
         );
@@ -204,11 +204,9 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private systems: FuelSystem[] = [];
-    private prioritySystems: string[] = [];
 
-    refresh(systems: FuelSystem[], priority: string[] = []): void {
+    refresh(systems: FuelSystem[]): void {
         this.systems = systems;
-        this.prioritySystems = priority;
         this._onDidChangeTreeData.fire(undefined);
     }
 
@@ -242,7 +240,7 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
     private createTopLevelItems(): TelemetryTreeItem[] {
         if (this.systems.length === 0) {
             const empty = new TelemetryTreeItem(
-                'No systems detected',
+                'No models detected',
                 TreeItemType.INFO_ITEM,
                 vscode.TreeItemCollapsibleState.None
             );
@@ -272,15 +270,10 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             items.push(this.createPoolHeader(poolId, poolSystems));
         }
 
-        // Add non-pooled systems (sorted by priority, then fuel level)
+        // Add non-pooled systems (sorted by fuel level)
         const standalone = this.systems
             .filter(s => !pooledSystems.has(s.systemId))
-            .sort((a, b) => {
-                const aPriority = this.prioritySystems.includes(a.systemId) ? 0 : 1;
-                const bPriority = this.prioritySystems.includes(b.systemId) ? 0 : 1;
-                if (aPriority !== bPriority) return aPriority - bPriority;
-                return a.fuelLevel - b.fuelLevel;
-            });
+            .sort((a, b) => a.fuelLevel - b.fuelLevel);
 
         for (const sys of standalone) {
             items.push(this.createSystemItem(sys));
@@ -316,8 +309,7 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             `**Shared Quota Pool**\n\n` +
             `These ${count} models share the same usage limit:\n\n` +
             `${memberNames}\n\n` +
-            `Current Level: ${percentage}%\n\n` +
-            `_Using any model in this pool depletes the shared quota_`
+            `Current Level: ${percentage}%`
         );
 
         return item;
@@ -326,17 +318,12 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
     private createSystemItem(system: FuelSystem): TelemetryTreeItem {
         const percentage = Math.round(system.fuelLevel * 100);
         const gauge = this.renderFuelGauge(system.fuelLevel);
-        const isPriority = this.prioritySystems.includes(system.systemId);
         const isPooled = !!system.quotaPoolId;
 
-        // Sanitize server-derived designation to prevent control char/codicon injection
         const safeDesignation = sanitizeLabel(system.designation);
-        const label = isPriority
-            ? `★ ${safeDesignation}`
-            : safeDesignation;
 
         const item = new TelemetryTreeItem(
-            label,
+            safeDesignation,
             TreeItemType.FUEL_SYSTEM,
             vscode.TreeItemCollapsibleState.Collapsed,
             system
@@ -349,17 +336,14 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             new vscode.ThemeColor(this.getReadinessColor(system.readiness))
         );
 
-        // Escape server-derived content to prevent markdown injection in tooltip
         const escapedDesignation = escapeMarkdown(system.designation);
 
-        // Build tooltip with pool info
         let tooltipText = `**${escapedDesignation}**\n\n` +
-            `Fuel Level: ${percentage}%\n\n` +
+            `Quota: ${percentage}%\n\n` +
             `Status: ${system.readiness}\n\n` +
             `Class: ${this.getSystemClassName(system.systemClass)}`;
 
         if (isPooled) {
-            // Find pool siblings
             const siblings = this.systems
                 .filter(s => s.quotaPoolId === system.quotaPoolId && s.systemId !== system.systemId)
                 .map(s => escapeMarkdown(s.designation));
@@ -379,14 +363,14 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
 
         // Fuel level bar
         const gaugeItem = new TelemetryTreeItem(
-            `Fuel: ${this.renderDetailedGauge(system.fuelLevel)}`,
+            `Quota: ${this.renderDetailedGauge(system.fuelLevel)}`,
             TreeItemType.FUEL_GAUGE,
             vscode.TreeItemCollapsibleState.None
         );
         gaugeItem.iconPath = new vscode.ThemeIcon('beaker');
         items.push(gaugeItem);
 
-        // System ID - sanitize to prevent UI injection
+        // System ID
         const safeSystemId = sanitizeLabel(system.systemId, 128);
         const idItem = new TelemetryTreeItem(
             `ID: ${safeSystemId}`,
@@ -400,7 +384,7 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
         if (system.replenishmentEta) {
             const countdown = this.formatCountdown(system.replenishmentEta);
             const timerItem = new TelemetryTreeItem(
-                `Refuel: ${countdown}`,
+                `Reset: ${countdown}`,
                 TreeItemType.REPLENISH_TIMER,
                 vscode.TreeItemCollapsibleState.None
             );
@@ -483,97 +467,5 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             [ReadinessLevel.OFFLINE]: 'disabledForeground'
         };
         return colors[level];
-    }
-}
-
-/**
- * Alerts View Provider
- * Shows active telemetry alerts
- */
-export class AlertsViewProvider implements vscode.TreeDataProvider<TelemetryTreeItem> {
-    private _onDidChangeTreeData = new vscode.EventEmitter<TelemetryTreeItem | undefined>();
-    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
-    private alerts: TelemetryAlert[] = [];
-
-    refresh(alerts: TelemetryAlert[]): void {
-        this.alerts = alerts;
-        this._onDidChangeTreeData.fire(undefined);
-    }
-
-    getTreeItem(element: TelemetryTreeItem): vscode.TreeItem {
-        return element;
-    }
-
-    getChildren(element?: TelemetryTreeItem): TelemetryTreeItem[] {
-        if (element) return [];
-
-        if (this.alerts.length === 0) {
-            const clear = new TelemetryTreeItem(
-                'All systems nominal',
-                TreeItemType.INFO_ITEM,
-                vscode.TreeItemCollapsibleState.None
-            );
-            clear.iconPath = new vscode.ThemeIcon(
-                'pass',
-                new vscode.ThemeColor('charts.green')
-            );
-            return [clear];
-        }
-
-        return this.alerts
-            .sort((a, b) => {
-                // Critical first, then by timestamp
-                const levelOrder: Record<ReadinessLevel, number> = {
-                    [ReadinessLevel.CRITICAL]: 0,
-                    [ReadinessLevel.WARNING]: 1,
-                    [ReadinessLevel.CAUTION]: 2,
-                    [ReadinessLevel.NOMINAL]: 3,
-                    [ReadinessLevel.OFFLINE]: 4
-                };
-                const levelDiff = levelOrder[a.level] - levelOrder[b.level];
-                return levelDiff !== 0 ? levelDiff : b.timestamp - a.timestamp;
-            })
-            .map(alert => this.createAlertItem(alert));
-    }
-
-    private createAlertItem(alert: TelemetryAlert): TelemetryTreeItem {
-        // Sanitize server-derived content for UI labels
-        const safeDesignation = sanitizeLabel(alert.systemDesignation);
-        const safeMessage = sanitizeLabel(alert.message, 100);
-
-        const item = new TelemetryTreeItem(
-            safeDesignation,
-            TreeItemType.ALERT_ITEM,
-            vscode.TreeItemCollapsibleState.None,
-            alert
-        );
-
-        item.description = safeMessage;
-        item.iconPath = new vscode.ThemeIcon(
-            alert.level === ReadinessLevel.CRITICAL ? 'error' : 'warning',
-            new vscode.ThemeColor(
-                alert.level === ReadinessLevel.CRITICAL
-                    ? 'charts.red'
-                    : 'charts.orange'
-            )
-        );
-
-        const elapsed = Date.now() - alert.timestamp;
-        const timeStr = elapsed < 60000
-            ? `${Math.floor(elapsed / 1000)}s ago`
-            : `${Math.floor(elapsed / 60000)}m ago`;
-
-        // Escape server-derived content to prevent markdown injection in tooltip
-        const escapedMessage = escapeMarkdown(alert.message);
-        const escapedSystemDesignation = escapeMarkdown(alert.systemDesignation);
-        item.tooltip = new vscode.MarkdownString(
-            `**${alert.level.toUpperCase()} ALERT**\n\n` +
-            `${escapedMessage}\n\n` +
-            `System: ${escapedSystemDesignation}\n\n` +
-            `Triggered: ${timeStr}`
-        );
-
-        return item;
     }
 }

@@ -5,6 +5,72 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-01-17
+
+### ⚠️ BREAKING CHANGES
+
+This is a major simplification release. Several features have been removed to focus purely on quota display.
+
+### Removed
+
+- **Alert Manager**: Removed all pop-up notifications for low fuel levels
+  - Deleted `alert_manager.ts` (209 lines)
+  - Deleted `AlertsViewProvider` and "Active Alerts" sidebar view
+  - Deleted `agTelemetry.configureAlerts` command
+  
+- **History Tracker**: Removed usage trend tracking
+  - Deleted `history_tracker.ts` (487 lines)
+  - Deleted `agTelemetry.viewTrends` command
+  - No more local storage writes for trend data
+  - No more sparkline visualizations, consumption rates, or time-to-empty estimates
+  
+- **Detailed Status Bar Mode**: Removed multi-model status bar display
+  - Only compact mode remains (shows overall or lowest model percentage)
+  
+- **Configurable Alert Thresholds**: Now hardcoded (5% critical, 20% warning, 40% caution)
+  - Removed `agTelemetry.alertThresholds` setting
+  
+- **Enable Notifications Setting**: No notifications = no toggle needed
+  - Removed `agTelemetry.enableNotifications` setting
+  
+- **Flight Deck Mode Setting**: Only compact mode remains
+  - Removed `agTelemetry.flightDeckMode` setting
+  
+- **Track History Setting**: No history = no toggle needed
+  - Removed `agTelemetry.trackHistory` setting
+  
+- **Priority Systems Setting**: Removed user-defined model prioritization
+  - Removed `agTelemetry.prioritySystems` setting
+
+### Changed
+
+- **Sidebar Views**: Reduced from 3 views to 2
+  - "System Status" - Uplink status and connection info
+  - "Model Quota" (renamed from "Fuel Reserves") - List of models with quotas
+  
+- **Mission Briefing**: Simplified quick pick dialog
+  - Shows models grouped by quota pool
+  - Single "Refresh Telemetry" action
+  
+- **Configuration**: Simplified to single setting
+  - Only `agTelemetry.scanInterval` remains (30-86400 seconds)
+
+### Kept
+
+- Compact status bar display with lowest model percentage
+- Dedicated Claude Opus 4.5 (Thinking) status bar item
+- Click status bar → view all models quick pick
+- System Status and Model Quota sidebar views
+- Quota pool detection and grouping
+- Refresh and Diagnostics commands
+- All security utilities and input validation
+
+### Technical
+
+- Total lines removed: ~1,100 (~40% of codebase)
+- All 182 unit tests still passing
+- Zero lint warnings
+
 ## [1.0.11] - 2026-01-14
 
 ### Changed

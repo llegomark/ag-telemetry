@@ -1,8 +1,8 @@
 {
   "name": "ag-telemetry",
   "displayName": "Antigravity AI Quota & Usage Tracker",
-  "description": "Track and monitor your Antigravity AI model quota usage, remaining limits, and usage trends in real-time",
-  "version": "1.0.11",
+  "description": "Track and monitor your Antigravity AI model quota usage and remaining limits in real-time",
+  "version": "2.0.0",
   "publisher": "llegomark",
   "license": "MIT",
   "repository": {
@@ -42,21 +42,9 @@
       },
       {
         "command": "agTelemetry.missionBriefing",
-        "title": "Mission Briefing",
+        "title": "View Quota Status",
         "category": "AG Telemetry",
         "icon": "$(dashboard)"
-      },
-      {
-        "command": "agTelemetry.viewTrends",
-        "title": "View Usage Trends",
-        "category": "AG Telemetry",
-        "icon": "$(graph-line)"
-      },
-      {
-        "command": "agTelemetry.configureAlerts",
-        "title": "Configure Alerts",
-        "category": "AG Telemetry",
-        "icon": "$(bell)"
       },
       {
         "command": "agTelemetry.establishLink",
@@ -91,16 +79,9 @@
         },
         {
           "id": "agTelemetryFuelView",
-          "name": "Fuel Reserves",
+          "name": "Model Quota",
           "contextualTitle": "AG Telemetry",
           "icon": "$(beaker)",
-          "visibility": "visible"
-        },
-        {
-          "id": "agTelemetryAlertsView",
-          "name": "Active Alerts",
-          "contextualTitle": "AG Telemetry",
-          "icon": "$(bell)",
           "visibility": "visible"
         }
       ]
@@ -121,44 +102,8 @@
           "type": "number",
           "default": 90,
           "minimum": 30,
-          "description": "Telemetry scan interval in seconds"
-        },
-        "agTelemetry.alertThresholds": {
-          "type": "object",
-          "default": {
-            "caution": 40,
-            "warning": 20,
-            "critical": 5
-          },
-          "description": "Fuel level thresholds for alerts (percentages)"
-        },
-        "agTelemetry.enableNotifications": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show notification alerts for low fuel levels"
-        },
-        "agTelemetry.flightDeckMode": {
-          "type": "string",
-          "enum": [
-            "compact",
-            "detailed",
-            "minimal"
-          ],
-          "default": "compact",
-          "description": "Status bar display mode"
-        },
-        "agTelemetry.trackHistory": {
-          "type": "boolean",
-          "default": true,
-          "description": "Track usage history for trend analysis"
-        },
-        "agTelemetry.prioritySystems": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "Model IDs to prioritize in displays"
+          "maximum": 86400,
+          "description": "Telemetry scan interval in seconds (30-86400)"
         }
       }
     }

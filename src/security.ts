@@ -185,31 +185,3 @@ export function sanitizeLabel(text: string, maxLength: number = 64): string {
     return sanitized;
 }
 
-/**
- * Type guard for validating TrendDataPoint structure.
- * Used when loading data from storage to prevent type confusion attacks.
- */
-export function isValidTrendDataPoint(point: unknown): point is {
-    timestamp: number;
-    systemId: string;
-    fuelLevel: number;
-} {
-    if (!point || typeof point !== 'object') {
-        return false;
-    }
-
-    const p = point as Record<string, unknown>;
-
-    return (
-        typeof p.timestamp === 'number' &&
-        Number.isFinite(p.timestamp) &&
-        p.timestamp > 0 &&
-        typeof p.systemId === 'string' &&
-        p.systemId.length > 0 &&
-        p.systemId.length <= 256 && // Reasonable limit for system IDs
-        typeof p.fuelLevel === 'number' &&
-        Number.isFinite(p.fuelLevel) &&
-        p.fuelLevel >= 0 &&
-        p.fuelLevel <= 1
-    );
-}

@@ -16,8 +16,7 @@ import {
     TelemetrySnapshot,
     ServerTelemetryResponse,
     TelemetryEvent,
-    TelemetryEventType,
-    AlertThresholds
+    TelemetryEventType
 } from './types';
 import { isValidCsrfToken, isValidPid, normalizeScanInterval } from './security';
 
@@ -70,7 +69,14 @@ export class TelemetryService {
     private static readonly MAX_LABEL_LENGTH = 128;
     private static readonly MAX_SYSTEM_ID_LENGTH = 256;
 
-    constructor(private thresholds: AlertThresholds) { }
+    /** Default alert thresholds (hardcoded for simplicity) */
+    private readonly thresholds = {
+        caution: 40,
+        warning: 20,
+        critical: 5
+    };
+
+    constructor() { }
 
     /**
      * Subscribe to telemetry events
@@ -835,12 +841,7 @@ export class TelemetryService {
         return this.lastSnapshot;
     }
 
-    /**
-     * Update alert thresholds
-     */
-    updateThresholds(thresholds: AlertThresholds): void {
-        this.thresholds = thresholds;
-    }
+
 
     /**
      * Get last raw API response for debugging

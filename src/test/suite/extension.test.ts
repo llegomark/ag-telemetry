@@ -1,6 +1,7 @@
 /**
  * AG Telemetry - Extension Integration Tests
  * Tests for extension activation and command registration
+ * Simplified version for v2.0.0
  */
 
 import * as assert from 'assert';
@@ -30,12 +31,12 @@ describe('Extension Integration Tests', function () {
     it('All commands should be registered', async () => {
         const commands = await vscode.commands.getCommands(true);
 
+        // Simplified command list for v2.0.0
         const expectedCommands = [
             'agTelemetry.refreshTelemetry',
             'agTelemetry.missionBriefing',
-            'agTelemetry.viewTrends',
-            'agTelemetry.configureAlerts',
-            'agTelemetry.establishLink'
+            'agTelemetry.establishLink',
+            'agTelemetry.runDiagnostics'
         ];
 
         for (const cmd of expectedCommands) {
@@ -49,31 +50,11 @@ describe('Extension Integration Tests', function () {
     it('Configuration should have expected properties', () => {
         const config = vscode.workspace.getConfiguration('agTelemetry');
 
-        // Check that configuration properties exist
+        // Only scanInterval remains in v2.0.0
         assert.notStrictEqual(
             config.get('scanInterval'),
             undefined,
             'scanInterval should be defined'
-        );
-        assert.notStrictEqual(
-            config.get('alertThresholds'),
-            undefined,
-            'alertThresholds should be defined'
-        );
-        assert.notStrictEqual(
-            config.get('enableNotifications'),
-            undefined,
-            'enableNotifications should be defined'
-        );
-        assert.notStrictEqual(
-            config.get('flightDeckMode'),
-            undefined,
-            'flightDeckMode should be defined'
-        );
-        assert.notStrictEqual(
-            config.get('trackHistory'),
-            undefined,
-            'trackHistory should be defined'
         );
     });
 
@@ -81,13 +62,5 @@ describe('Extension Integration Tests', function () {
         const config = vscode.workspace.getConfiguration('agTelemetry');
 
         assert.strictEqual(config.get('scanInterval'), 90, 'Default scan interval should be 90');
-        assert.strictEqual(config.get('enableNotifications'), true, 'Notifications should be enabled by default');
-        assert.strictEqual(config.get('flightDeckMode'), 'compact', 'Default flight deck mode should be compact');
-        assert.strictEqual(config.get('trackHistory'), true, 'History tracking should be enabled by default');
-
-        const thresholds = config.get<{ caution: number; warning: number; critical: number }>('alertThresholds');
-        assert.strictEqual(thresholds?.caution, 40, 'Default caution threshold should be 40');
-        assert.strictEqual(thresholds?.warning, 20, 'Default warning threshold should be 20');
-        assert.strictEqual(thresholds?.critical, 5, 'Default critical threshold should be 5');
     });
 });

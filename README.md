@@ -1,64 +1,49 @@
 # Antigravity AI Quota & Usage Tracker
 
-**Track and monitor your Antigravity AI model quota usage, remaining limits, and usage trends in real-time.**
+**Track and monitor your Antigravity AI model quota usage and remaining limits in real-time.**
 
-Antigravity AI Quota & Usage Tracker provides real-time monitoring of your AI model quota usage in Antigravity IDE with a space mission-themed interface, including sidebar views, status bar indicators, usage trend tracking, and configurable alerts.
+A streamlined VS Code extension for Antigravity IDE that displays your AI model quota levels with a space mission-themed interface, including sidebar views, status bar indicators, and quota pool detection.
 
 ## Features
 
-### Mission Briefing Dashboard
+### Status Bar Display
 
-Quick access to all your AI model fuel levels through an intuitive quick pick interface:
+A compact status bar indicator showing your AI model quota status:
 
-- View all models at a glance with visual fuel gauges
+- Shows overall quota percentage or the most critical model
+- **Dedicated Claude Opus 4.5 (Thinking) display** - Always visible when available
+- Click to open the quota quick pick for detailed view
+- Color-coded backgrounds for warning (orange) and critical (red) states
+
+### Quota Quick Pick
+
+Quick access to all your AI model quota levels:
+
+- View all models at a glance with visual gauges
 - See current usage percentages for each model
-- Quick actions for refresh, trends, and alert configuration
+- **Quota pool grouping** - Models sharing the same quota are visually grouped
+- Refresh telemetry action
 
 ### Sidebar Mission Control Panel
 
-A dedicated activity bar panel with three specialized views:
+A dedicated activity bar panel with two views:
 
 | View | Description |
 |------|-------------|
-| **System Status** | Overall fleet readiness, uplink connection status, and system counts |
-| **Fuel Reserves** | Individual model fuel levels with expandable details and replenishment timers |
-| **Active Alerts** | Real-time alerts for systems with low fuel levels |
+| **System Status** | Uplink connection status, overall readiness, and system counts |
+| **Model Quota** | Individual model quota levels with expandable details and reset timers |
 
-### Flight Deck Status Bar
+### Quota Pool Detection
 
-A unique status bar display showing your AI model status with three display modes:
+Automatically detects and groups models that share the same usage quota:
 
-| Mode | Description | Example |
-|------|-------------|---------|
-| **Minimal** | Overall fleet status indicator only | `$(pulse) AGT ●` |
-| **Compact** | Status + most critical system (default) | `$(pulse) AGT CS:45%` |
-| **Detailed** | Multiple system gauges | `$(pulse) AGT` + `GP▰80 CS▱45 GF▰90` |
-
-### Status Bar Tooltip
-
-Hover over the status bar item to see a comprehensive mission status overview with fuel gauges for all your AI models.
-
-### Usage Trend Tracking
-
-- Automatic sampling of fuel levels over time (stored locally)
-- Sparkline visualizations of usage patterns
-- Consumption rate calculations (% per hour)
-- Time-to-empty estimations
-- 7-day history retention
-
-### Configurable Alert System
-
-Three-tier threshold system with VS Code notifications:
-
-| Level | Default | Description |
-|-------|---------|-------------|
-| **Caution** | 40% | Early warning indicator |
-| **Warning** | 20% | Action recommended |
-| **Critical** | 5% | Immediate attention required |
+- Models with identical fuel levels are grouped under "Shared Pool" headers
+- Tooltips show which models share quota with each other
+- Visual 🔗 indicator marks pooled models
 
 ## Supported Models
 
-Antigravity AI Quota & Usage Tracker automatically detects and monitors all AI models available in your Antigravity installation:
+The extension automatically detects and monitors all AI models available in your Antigravity installation:
 
 - Gemini 3 Pro (High/Low)
 - Gemini 3 Flash
@@ -66,6 +51,21 @@ Antigravity AI Quota & Usage Tracker automatically detects and monitors all AI m
 - Claude Opus 4.5 (Thinking)
 - GPT OSS 120B (Medium)
 - And any other models configured in Antigravity
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `AG Telemetry: Refresh Telemetry` | Manually refresh quota data |
+| `AG Telemetry: View Quota Status` | Open the quota quick pick dialog |
+| `AG Telemetry: Establish Uplink` | Reconnect to Antigravity language server |
+| `AG Telemetry: Run Diagnostics` | Display diagnostic information for troubleshooting |
+
+## Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `agTelemetry.scanInterval` | 90 | Telemetry scan interval in seconds (30-86400) |
 
 ## Requirements
 
@@ -90,6 +90,16 @@ The extension is available on the [Open VSX Registry](https://open-vsx.org/exten
 3. Press `Ctrl+Shift+P` → "Extensions: Install from VSIX..."
 4. Select the downloaded `.vsix` file
 5. Reload when prompted
+
+## What's New in v2.0.0
+
+Version 2.0.0 is a major simplification release:
+
+- **Removed**: Alert notifications, usage trend tracking, detailed status bar mode, configurable thresholds
+- **Kept**: Status bar quota display, Claude Opus display, sidebar views, quota pool detection
+- **Simplified**: Single configuration setting (`scanInterval`)
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ## License
 
