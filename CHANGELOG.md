@@ -5,6 +5,21 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-01-17
+
+### Fixed
+
+- **Critical: Exhausted models no longer hidden**: Models with fully consumed quota now remain visible in the UI instead of disappearing entirely
+  - Root cause: `processTelemetryData` was skipping models without `quotaInfo` or with missing `remainingFraction`
+  - Models without quota info are now treated as exhausted (0% fuel level) and displayed with prominent styling
+  - Tree view shows warning icon (⚠️) and "EXHAUSTED • Resets: Xh Ym" for exhausted models  
+  - Status bar shows warning styling when Claude Opus quota is exhausted
+  - Tooltips prominently display reset time countdown for exhausted models
+
+### Changed
+
+- `ModelConfig.quotaInfo.remainingFraction` is now optional to support API responses where quota is exhausted
+
 ## [2.0.1] - 2026-01-17
 
 ### Changed

@@ -557,8 +557,6 @@ export class TelemetryService {
                 break;
             }
 
-            if (!config.quotaInfo) continue;
-
             // Validate label is a non-empty string
             const rawLabel = config.label;
             if (typeof rawLabel !== 'string') {
@@ -573,12 +571,29 @@ export class TelemetryService {
                 ? trimmedLabel.slice(0, TelemetryService.MAX_LABEL_LENGTH)
                 : trimmedLabel;
 
-            // Validate and clamp remainingFraction to [0, 1]
-            const rawFraction = config.quotaInfo.remainingFraction;
-            if (typeof rawFraction !== 'number' || !Number.isFinite(rawFraction)) {
-                continue; // Skip entries with invalid fuel level
+            // Handle missing quotaInfo as exhausted quota (fuelLevel = 0)
+            // This ensures exhausted models still appear in the UI with reset time info
+            let fuelLevel: number;
+            let resetTime: string | undefined;
+
+            if (config.quotaInfo) {
+                // Validate and clamp remainingFraction to [0, 1]
+                const rawFraction = config.quotaInfo.remainingFraction;
+                if (typeof rawFraction === 'number' && Number.isFinite(rawFraction)) {
+                    fuelLevel = Math.max(0, Math.min(1, rawFraction));
+                } else {
+                    // Missing or invalid remainingFraction = exhausted
+                    fuelLevel = 0;
+                }
+
+                resetTime = typeof config.quotaInfo.resetTime === 'string'
+                    ? config.quotaInfo.resetTime
+                    : undefined;
+            } else {
+                // No quotaInfo at all = exhausted quota
+                fuelLevel = 0;
+                resetTime = undefined;
             }
-            const fuelLevel = Math.max(0, Math.min(1, rawFraction));
 
             // Validate systemId
             const rawSystemId = config.modelOrAlias?.model ?? trimmedLabel;
@@ -590,10 +605,6 @@ export class TelemetryService {
                 trimmedSystemId.length > TelemetryService.MAX_SYSTEM_ID_LENGTH) {
                 continue;
             }
-
-            const resetTime = typeof config.quotaInfo.resetTime === 'string'
-                ? config.quotaInfo.resetTime
-                : undefined;
 
             const system: FuelSystem = {
                 systemId: trimmedSystemId,

@@ -288,6 +288,12 @@ export class FlightDeck {
         }
 
         const resetDate = new Date(resetTime);
+
+        // Validate date - invalid dates return NaN from getTime()
+        if (isNaN(resetDate.getTime())) {
+            return 'Reset time unknown';
+        }
+
         const now = new Date();
         const diffMs = resetDate.getTime() - now.getTime();
 
@@ -322,10 +328,18 @@ export class FlightDeck {
         }
 
         const pct = Math.round(opus.fuelLevel * 100);
+        const isExhausted = pct === 0;
 
-        this.opusItem.text = `Claude Opus 4.5 (Thinking): ${pct}%`;
-        this.opusItem.tooltip = this.formatTimeUntilReset(opus.replenishmentEta);
-        this.opusItem.backgroundColor = undefined;
+        if (isExhausted) {
+            const resetInfo = this.formatTimeUntilReset(opus.replenishmentEta);
+            this.opusItem.text = `$(warning) Claude Opus: EXHAUSTED`;
+            this.opusItem.tooltip = `Quota exhausted — ${resetInfo}`;
+            this.opusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        } else {
+            this.opusItem.text = `Claude Opus 4.5 (Thinking): ${pct}%`;
+            this.opusItem.tooltip = this.formatTimeUntilReset(opus.replenishmentEta);
+            this.opusItem.backgroundColor = undefined;
+        }
         this.opusItem.show();
     }
 

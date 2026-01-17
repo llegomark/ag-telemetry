@@ -286,6 +286,7 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
         const percentage = Math.round(systems[0].fuelLevel * 100);
         const count = systems.length;
         const gauge = this.renderFuelGauge(systems[0].fuelLevel);
+        const isExhausted = percentage === 0;
 
         const item = new TelemetryTreeItem(
             `Shared Pool (${count} models)`,
@@ -294,9 +295,18 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             { poolId }
         );
 
-        item.description = `${gauge} ${percentage}%`;
+        // Show exhausted state prominently with reset time
+        if (isExhausted) {
+            const countdown = systems[0].replenishmentEta
+                ? this.formatCountdown(systems[0].replenishmentEta)
+                : 'unknown';
+            item.description = `⚠️ EXHAUSTED • Resets: ${countdown}`;
+        } else {
+            item.description = `${gauge} ${percentage}%`;
+        }
+
         item.iconPath = new vscode.ThemeIcon(
-            'link',
+            isExhausted ? 'warning' : 'link',
             new vscode.ThemeColor(this.getReadinessColor(systems[0].readiness))
         );
 
@@ -305,12 +315,16 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             .map(s => escapeMarkdown(s.designation))
             .join(', ');
 
-        item.tooltip = new vscode.MarkdownString(
-            `**Shared Quota Pool**\n\n` +
+        let tooltipText = `**Shared Quota Pool**\n\n` +
             `These ${count} models share the same usage limit:\n\n` +
             `${memberNames}\n\n` +
-            `Current Level: ${percentage}%`
-        );
+            `Current Level: ${percentage}%`;
+
+        if (isExhausted && systems[0].replenishmentEta) {
+            tooltipText += `\n\n---\n\n⏱️ **Reset Time:** ${this.formatCountdown(systems[0].replenishmentEta)}`;
+        }
+
+        item.tooltip = new vscode.MarkdownString(tooltipText);
 
         return item;
     }
@@ -319,6 +333,7 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
         const percentage = Math.round(system.fuelLevel * 100);
         const gauge = this.renderFuelGauge(system.fuelLevel);
         const isPooled = !!system.quotaPoolId;
+        const isExhausted = percentage === 0;
 
         const safeDesignation = sanitizeLabel(system.designation);
 
@@ -329,10 +344,22 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             system
         );
 
-        // Don't show gauge for pooled systems (shown in header)
-        item.description = isPooled ? '' : `${gauge} ${percentage}%`;
+        // Show exhausted state prominently with reset time
+        if (isExhausted) {
+            const countdown = system.replenishmentEta
+                ? this.formatCountdown(system.replenishmentEta)
+                : 'unknown';
+            item.description = `⚠️ EXHAUSTED • Resets: ${countdown}`;
+        } else if (isPooled) {
+            // Don't show gauge for pooled systems (shown in header)
+            item.description = '';
+        } else {
+            item.description = `${gauge} ${percentage}%`;
+        }
+
+        // Use warning icon for exhausted models
         item.iconPath = new vscode.ThemeIcon(
-            this.getSystemClassIcon(system.systemClass),
+            isExhausted ? 'warning' : this.getSystemClassIcon(system.systemClass),
             new vscode.ThemeColor(this.getReadinessColor(system.readiness))
         );
 
@@ -342,6 +369,10 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
             `Quota: ${percentage}%\n\n` +
             `Status: ${system.readiness}\n\n` +
             `Class: ${this.getSystemClassName(system.systemClass)}`;
+
+        if (isExhausted && system.replenishmentEta) {
+            tooltipText += `\n\n---\n\n⏱️ **Reset Time:** ${this.formatCountdown(system.replenishmentEta)}`;
+        }
 
         if (isPooled) {
             const siblings = this.systems
@@ -420,6 +451,12 @@ export class FuelViewProvider implements vscode.TreeDataProvider<TelemetryTreeIt
 
     private formatCountdown(isoDate: string): string {
         const target = new Date(isoDate).getTime();
+
+        // Validate date - invalid dates return NaN
+        if (isNaN(target)) {
+            return 'unknown';
+        }
+
         const now = Date.now();
         const diff = target - now;
 

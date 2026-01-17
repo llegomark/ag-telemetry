@@ -86,7 +86,9 @@ export interface ModelConfig {
         model?: string;
     };
     quotaInfo?: {
-        remainingFraction: number;
+        /** Remaining quota fraction (0.0-1.0). May be missing when quota is exhausted. */
+        remainingFraction?: number;
+        /** ISO timestamp for next quota reset */
         resetTime?: string;
     };
 }

@@ -368,19 +368,35 @@ describe('TelemetryService Logic', () => {
         }
 
         // Simplified processTelemetryData for testing
+        // Updated to match the real implementation: models without quotaInfo
+        // are included as exhausted (fuelLevel = 0) instead of being skipped
         function processTelemetryData(raw: ServerTelemetryResponse) {
             const configs = raw.userStatus?.cascadeModelConfigData?.clientModelConfigs ?? [];
             const systems = [];
 
             for (const config of configs) {
-                if (!config.quotaInfo) continue;
+                // Handle missing quotaInfo as exhausted quota (fuelLevel = 0)
+                let fuelLevel: number;
+                let resetTime: string | undefined;
 
-                const fuelLevel = config.quotaInfo.remainingFraction;
+                if (config.quotaInfo) {
+                    const rawFraction = config.quotaInfo.remainingFraction;
+                    if (typeof rawFraction === 'number' && Number.isFinite(rawFraction)) {
+                        fuelLevel = Math.max(0, Math.min(1, rawFraction));
+                    } else {
+                        fuelLevel = 0;
+                    }
+                    resetTime = config.quotaInfo.resetTime;
+                } else {
+                    fuelLevel = 0;
+                    resetTime = undefined;
+                }
+
                 systems.push({
                     systemId: config.modelOrAlias?.model ?? config.label,
                     designation: config.label,
                     fuelLevel,
-                    replenishmentEta: config.quotaInfo.resetTime,
+                    replenishmentEta: resetTime,
                     readiness: assessReadiness(fuelLevel),
                     systemClass: classifySystem(config.label),
                     isOnline: true
@@ -412,7 +428,7 @@ describe('TelemetryService Logic', () => {
             expect(result[0].readiness).to.equal(ReadinessLevel.NOMINAL);
         });
 
-        it('should skip configs without quotaInfo', () => {
+        it('should include configs without quotaInfo as exhausted (fuelLevel=0)', () => {
             const response: ServerTelemetryResponse = {
                 userStatus: {
                     cascadeModelConfigData: {
@@ -428,8 +444,34 @@ describe('TelemetryService Logic', () => {
             };
 
             const result = processTelemetryData(response);
+            expect(result).to.have.lengthOf(2);
+            // Exhausted model (no quotaInfo) should be first (fuelLevel=0)
+            expect(result[0].designation).to.equal('no-quota');
+            expect(result[0].fuelLevel).to.equal(0);
+            expect(result[0].readiness).to.equal(ReadinessLevel.CRITICAL);
+            // Normal model should be second
+            expect(result[1].designation).to.equal('with-quota');
+            expect(result[1].fuelLevel).to.equal(0.5);
+        });
+
+        it('should treat missing remainingFraction as exhausted (fuelLevel=0)', () => {
+            const response: ServerTelemetryResponse = {
+                userStatus: {
+                    cascadeModelConfigData: {
+                        clientModelConfigs: [
+                            {
+                                label: 'no-fraction',
+                                quotaInfo: { resetTime: '2026-01-18T00:00:00Z' }
+                            }
+                        ]
+                    }
+                }
+            };
+
+            const result = processTelemetryData(response);
             expect(result).to.have.lengthOf(1);
-            expect(result[0].designation).to.equal('with-quota');
+            expect(result[0].fuelLevel).to.equal(0);
+            expect(result[0].replenishmentEta).to.equal('2026-01-18T00:00:00Z');
         });
 
         it('should sort systems by fuel level ascending', () => {
