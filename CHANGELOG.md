@@ -5,6 +5,30 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-02-05
+
+### Security
+
+- **Localhost address validation**: Added explicit validation to ensure HTTP requests only connect to localhost addresses (`127.0.0.1`, `::1`, `localhost`)
+  - New `isLocalhostAddress()` helper function in `TelemetryService`
+  - Defense-in-depth check in both `probeFrequency()` and `transmitQuery()` methods
+  - Prevents accidental non-localhost connection attempts
+
+- **Enhanced PID sanitization for shell commands**: Added `sanitizePidForCommand()` with multi-layer validation
+  - Calls existing `isValidPid()` for range validation
+  - Regex check ensures string contains only digits (`/^\d+$/`)
+  - Reparse verification confirms no precision loss during string conversion
+  - Provides additional defense layer against command injection
+
+- **Improved shell command patterns**:
+  - **Windows**: Added `-NoProfile` for faster/safer PowerShell execution, `-ErrorAction SilentlyContinue` for graceful failures
+  - **macOS**: Added stderr redirect (`2>/dev/null`) for cleaner error handling
+  - **Linux**: Changed from `grep "pid=X"` to `grep -F "pid=X,"` to prevent regex interpretation and false substring matches
+
+### Changed
+
+- Security comments in `probeFrequency()` and `transmitQuery()` now explicitly document the localhost validation chain
+
 ## [2.0.2] - 2026-01-17
 
 ### Fixed

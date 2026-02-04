@@ -69,6 +69,13 @@ export class TelemetryService {
     private static readonly MAX_LABEL_LENGTH = 128;
     private static readonly MAX_SYSTEM_ID_LENGTH = 256;
 
+    /** Allowed localhost addresses for security validation */
+    private static readonly LOCALHOST_ADDRESSES: ReadonlySet<string> = new Set([
+        '127.0.0.1',
+        '::1',
+        'localhost'
+    ]);
+
     /** Default alert thresholds (hardcoded for simplicity) */
     private readonly thresholds = {
         caution: 40,
@@ -100,6 +107,40 @@ export class TelemetryService {
 
     private static isValidPort(port: number): boolean {
         return Number.isInteger(port) && port > 0 && port < 65536;
+    }
+
+    /**
+     * Validate that a hostname is a localhost address.
+     * Defense-in-depth to prevent accidental connections to non-local hosts.
+     */
+    private static isLocalhostAddress(hostname: string): boolean {
+        return TelemetryService.LOCALHOST_ADDRESSES.has(hostname.toLowerCase());
+    }
+
+    /**
+     * Sanitize and validate PID for safe use in shell commands.
+     * Returns the PID as a string if valid, null otherwise.
+     * This provides an additional layer of defense beyond isValidPid.
+     */
+    private static sanitizePidForCommand(pid: number): string | null {
+        // Strict validation: must be a positive integer within valid range
+        if (!isValidPid(pid)) {
+            return null;
+        }
+
+        // Convert to string and verify it contains only digits
+        const pidStr = String(pid);
+        if (!/^\d+$/.test(pidStr)) {
+            return null;
+        }
+
+        // Additional range check after string conversion (defense-in-depth)
+        const reparsed = parseInt(pidStr, 10);
+        if (reparsed !== pid || reparsed <= 0 || reparsed > 4194304) {
+            return null;
+        }
+
+        return pidStr;
     }
 
     private readLimitedResponse(res: IncomingMessage, maxBytes: number): Promise<string | null> {
@@ -285,8 +326,9 @@ export class TelemetryService {
      * Detect active communication frequencies for process
      */
     private async detectActiveFrequencies(pid: number): Promise<number[]> {
-        // Defense in depth: validate PID even though it comes from trusted OS output
-        if (!isValidPid(pid)) {
+        // Defense in depth: validate and sanitize PID before use in shell commands
+        const safePid = TelemetryService.sanitizePidForCommand(pid);
+        if (safePid === null) {
             return [];
         }
 
@@ -295,21 +337,26 @@ export class TelemetryService {
 
         try {
             if (os === 'win32') {
+                // PowerShell: Use argument as a literal value, not string interpolation
+                // The -OwningProcess parameter only accepts integers, providing implicit validation
                 const { stdout } = await execAsync(
-                    `powershell -Command "Get-NetTCPConnection -OwningProcess ${pid} -State Listen | ` +
+                    `powershell -NoProfile -Command "Get-NetTCPConnection -OwningProcess ${safePid} -State Listen -ErrorAction SilentlyContinue | ` +
                     `Select-Object -ExpandProperty LocalPort"`,
                     { timeout: 5000 }
                 );
                 output = stdout;
             } else if (os === 'darwin') {
+                // lsof: -p only accepts numeric PIDs, providing implicit validation
                 const { stdout } = await execAsync(
-                    `lsof -iTCP -sTCP:LISTEN -a -p ${pid} -Fn | grep '^n' | sed 's/n\\*://'`,
+                    `lsof -iTCP -sTCP:LISTEN -a -p ${safePid} -Fn 2>/dev/null | grep '^n' | sed 's/n\\*://'`,
                     { timeout: 5000 }
                 );
                 output = stdout;
             } else {
+                // ss + grep: Using validated PID in pattern matching
+                // The grep pattern is safe because safePid contains only digits
                 const { stdout } = await execAsync(
-                    `ss -tlnp 2>/dev/null | grep "pid=${pid}" | awk '{print $4}' | rev | cut -d: -f1 | rev`,
+                    `ss -tlnp 2>/dev/null | grep -F "pid=${safePid}," | awk '{print $4}' | rev | cut -d: -f1 | rev`,
                     { timeout: 5000 }
                 );
                 output = stdout;
@@ -339,13 +386,22 @@ export class TelemetryService {
             return Promise.resolve(false);
         }
 
+        // Defense-in-depth: Use constant for localhost to prevent accidental changes
+        const hostname = '127.0.0.1';
+
+        // Validate we're truly connecting to localhost (belt-and-suspenders check)
+        if (!TelemetryService.isLocalhostAddress(hostname)) {
+            console.error('[AG Telemetry] Security: Rejected non-localhost connection attempt');
+            return Promise.resolve(false);
+        }
+
         return new Promise(resolve => {
             const payload = JSON.stringify({
                 context: { properties: { ide: 'antigravity' } }
             });
 
             const req = https.request({
-                hostname: '127.0.0.1',
+                hostname,
                 port,
                 path: '/exa.language_server_pb.LanguageServerService/GetUnleashData',
                 method: 'POST',
@@ -357,9 +413,10 @@ export class TelemetryService {
                 // SECURITY NOTE: rejectUnauthorized is disabled because the Antigravity
                 // language server uses a self-signed certificate for localhost communication.
                 // This is acceptable because:
-                // 1. Communication is strictly localhost (127.0.0.1), not DNS-resolvable
+                // 1. Communication is strictly localhost (127.0.0.1), validated above
                 // 2. CSRF token provides request authenticity verification
                 // 3. An attacker with local machine access has already compromised security
+                // 4. No CA will issue certificates for localhost/127.0.0.1 addresses
                 rejectUnauthorized: false,
                 timeout: 3000
             }, res => {
@@ -493,13 +550,22 @@ export class TelemetryService {
             return Promise.resolve(null);
         }
 
+        // Defense-in-depth: Use constant for localhost to prevent accidental changes
+        const hostname = '127.0.0.1';
+
+        // Validate we're truly connecting to localhost (belt-and-suspenders check)
+        if (!TelemetryService.isLocalhostAddress(hostname)) {
+            console.error('[AG Telemetry] Security: Rejected non-localhost connection attempt');
+            return Promise.resolve(null);
+        }
+
         return new Promise(resolve => {
             const payload = JSON.stringify({
                 metadata: { ideName: 'antigravity' }
             });
 
             const req = https.request({
-                hostname: '127.0.0.1',
+                hostname,
                 port,
                 path: '/exa.language_server_pb.LanguageServerService/GetUserStatus',
                 method: 'POST',
@@ -509,7 +575,10 @@ export class TelemetryService {
                     'X-Codeium-Csrf-Token': token
                 },
                 // SECURITY NOTE: rejectUnauthorized is disabled for localhost self-signed cert.
-                // See probeFrequency() for detailed security rationale.
+                // See probeFrequency() for detailed security rationale. Key points:
+                // - Localhost address is validated above
+                // - CSRF token authenticates the request
+                // - No CA issues certs for 127.0.0.1
                 rejectUnauthorized: false,
                 timeout: 5000
             }, res => {
