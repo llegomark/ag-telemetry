@@ -91,7 +91,7 @@ The extension is available on the [Open VSX Registry](https://open-vsx.org/exten
 4. Select the downloaded `.vsix` file
 5. Reload when prompted
 
-## What's New in v2.0.5
+## What's New in v2.0.4
 
 - **Claude Opus 4.6 (Thinking) support**: Now detects and displays the new Claude Opus 4.6 model for Ultra plan subscribers
 - **Dynamic version display**: Status bar shows the actual detected model version (4.6, 4.5, or 4)
