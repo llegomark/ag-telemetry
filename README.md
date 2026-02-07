@@ -11,7 +11,7 @@ A streamlined VS Code extension for Antigravity IDE that displays your AI model 
 A compact status bar indicator showing your AI model quota status:
 
 - Shows overall quota percentage or the most critical model
-- **Dedicated Claude Opus 4.5 (Thinking) display** - Always visible when available
+- **Dedicated Claude Opus (Thinking) display** - Shows the latest available version (4.6 on Ultra, 4.5 on Pro)
 - Click to open the quota quick pick for detailed view
 - Color-coded backgrounds for warning (orange) and critical (red) states
 
@@ -48,7 +48,7 @@ The extension automatically detects and monitors all AI models available in your
 - Gemini 3 Pro (High/Low)
 - Gemini 3 Flash
 - Claude Sonnet 4.5 / Claude Sonnet 4.5 (Thinking)
-- Claude Opus 4.5 (Thinking)
+- Claude Opus 4.5 (Thinking) / Claude Opus 4.6 (Thinking)
 - GPT OSS 120B (Medium)
 - And any other models configured in Antigravity
 
@@ -91,15 +91,15 @@ The extension is available on the [Open VSX Registry](https://open-vsx.org/exten
 4. Select the downloaded `.vsix` file
 5. Reload when prompted
 
-## What's New in v2.0.0
+## What's New in v2.0.5
 
-Version 2.0.0 is a major simplification release:
+- **Claude Opus 4.6 (Thinking) support**: Now detects and displays the new Claude Opus 4.6 model for Ultra plan subscribers
+- **Dynamic version display**: Status bar shows the actual detected model version (4.6, 4.5, or 4)
+- **Automatic prioritization**: Newer model versions are automatically preferred when available
 
-- **Removed**: Alert notifications, usage trend tracking, detailed status bar mode, configurable thresholds
-- **Kept**: Status bar quota display, Claude Opus display, sidebar views, quota pool detection
-- **Simplified**: Single configuration setting (`scanInterval`)
+Version 2.0.0 was a major simplification release that removed alert notifications, usage trend tracking, and detailed status bar mode in favor of a streamlined quota display experience.
 
-See [CHANGELOG.md](CHANGELOG.md) for full details.
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ## License
 

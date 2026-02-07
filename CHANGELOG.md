@@ -5,6 +5,21 @@ All notable changes to AG Telemetry will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-02-07
+
+### Added
+
+- **Claude Opus 4.6 (Thinking) support**: Added support for the new Claude Opus 4.6 (Thinking) model available to Ultra plan subscribers
+  - Status bar now dynamically displays the detected model version (4.6, 4.5, or 4)
+  - Model detection prioritizes newer versions: 4.6 > 4.5 > 4
+  - Existing Pro plan users will continue to see Claude Opus 4.5 (Thinking)
+  - Ultra plan users with access to 4.6 will see it automatically pinned in the status bar
+
+### Changed
+
+- **Dynamic version display**: Claude Opus status bar item now shows the actual detected model version instead of hardcoding "4.5"
+- Updated README to document Claude Opus 4.6 (Thinking) support
+
 ## [2.0.3] - 2026-02-05
 
 ### Security

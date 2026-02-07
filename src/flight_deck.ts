@@ -283,13 +283,36 @@ export class FlightDeck {
             return null;
         }
 
-        // Prefer "thinking" variants or version 4/4.5
+        // Prefer "thinking" variants, prioritizing newer versions (4.6 > 4.5 > 4)
+        // Check for 4.6 first (highest priority for Ultra plan users)
+        const opus46 = opusModels.find(sys => sys.designation.toLowerCase().includes('4.6'));
+        if (opus46) return opus46;
+
+        // Then check for 4.5
+        const opus45 = opusModels.find(sys => {
+            const lower = sys.designation.toLowerCase();
+            return lower.includes('4.5') || (lower.includes('thinking') && !lower.includes('4.6'));
+        });
+        if (opus45) return opus45;
+
+        // Finally, check for version 4 or any thinking variant
         const thinking = opusModels.find(sys => {
             const lower = sys.designation.toLowerCase();
-            return lower.includes('thinking') || lower.includes('4.5') || lower.includes('4 ');
+            return lower.includes('thinking') || lower.includes('4 ');
         });
 
         return thinking ?? opusModels[0];
+    }
+
+    /**
+     * Extract version string from Claude Opus model designation
+     */
+    private extractOpusVersion(designation: string): string {
+        const lower = designation.toLowerCase();
+        if (lower.includes('4.6')) return '4.6';
+        if (lower.includes('4.5')) return '4.5';
+        if (lower.includes('4 ') || lower.includes('4)')) return '4';
+        return '';
     }
 
     /**
@@ -349,7 +372,9 @@ export class FlightDeck {
             this.opusItem.tooltip = `Quota exhausted — ${resetInfo}`;
             this.opusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         } else {
-            this.opusItem.text = `Claude Opus 4.5 (Thinking): ${pct}%`;
+            const version = this.extractOpusVersion(opus.designation);
+            const versionText = version ? ` ${version}` : '';
+            this.opusItem.text = `Claude Opus${versionText} (Thinking): ${pct}%`;
             this.opusItem.tooltip = this.formatTimeUntilReset(opus.replenishmentEta);
             this.opusItem.backgroundColor = undefined;
         }
